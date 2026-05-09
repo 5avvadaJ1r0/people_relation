@@ -372,7 +372,7 @@ sequenceDiagram
 - **クエリ**
   - `title` (string, 必須, min_length=1)
 - **キャッシュ**: Redis（タイトル単位）
-- **補足**: Wikipedia/Wikidata 側の一時的なエラー時は `source="unknown"` で返すが、**Redis には書かない**（`is_human:false` を短TTLでキャッシュすると、再取得時に `source=cache` となりフロントが非人物として誤って除外するため）
+- **補足**: Wikipedia/Wikidata 側の一時的なエラー時は `source="unknown"` で返すが、**Redis には書かない**（`is_human:false` を短TTLでキャッシュすると、再取得時に `source=cache` となりフロントが「判定不能なのに非人物」と誤って固定除外しやすいため）。なおフロントは `source="unknown"`（判定不能）を **表示しない** 扱いにして、人物以外の混入を避ける。
 
 #### 通信シーケンス（Wikipedia/Wikidata + Redis）
 

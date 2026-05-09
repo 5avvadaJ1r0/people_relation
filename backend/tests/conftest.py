@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 import os
 from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 # app / settings を import する前にテスト用 URL を固定する
 # :memory: は接続ごとに別 DB になるため、ファイル SQLite で単一 DB を共有する
@@ -11,22 +16,18 @@ if _test_db.exists():
 os.environ.setdefault("DATABASE_URL", f"sqlite+pysqlite:///{_test_db.resolve()}")
 os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:9/0")
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import text
-
-from app.db import engine
-from app.main import app
+from app.db import engine  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 @pytest.fixture(scope="session")
-def client() -> TestClient:
+def client() -> Iterator[TestClient]:
     with TestClient(app) as c:
         yield c
 
 
 @pytest.fixture(autouse=True)
-def _empty_db(client: TestClient) -> None:
+def _empty_db(client: TestClient) -> Iterator[None]:
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM relation"))
         conn.execute(text("DELETE FROM person"))
@@ -34,7 +35,7 @@ def _empty_db(client: TestClient) -> None:
 
 
 @pytest.fixture
-def mock_wiki_is_human(monkeypatch: pytest.MonkeyPatch):
+def mock_wiki_is_human(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.schemas import HumanCheck
 
     async def fake_is_human(title: str) -> HumanCheck:

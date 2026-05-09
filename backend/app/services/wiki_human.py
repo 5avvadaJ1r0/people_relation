@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import httpx
 import redis
@@ -45,9 +46,11 @@ async def is_human_by_title(title: str) -> HumanCheck:
 
     r = _redis()
     key = _cache_key(t)
-    cached = r.get(key)
+    cached: Any = r.get(key)
     if cached:
         try:
+            if not isinstance(cached, (str, bytes, bytearray)):
+                cached = str(cached)
             d = json.loads(cached)
             return HumanCheck(title=t, qid=d.get("qid"), is_human=_coerce_bool(d.get("is_human")), source="cache")
         except Exception:

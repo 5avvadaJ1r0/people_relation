@@ -35,13 +35,12 @@ const filterWikiPeopleOnly = async (
       batch.map(async (it) => {
         try {
           const x = await wikiIsHuman(it.title);
-          // 判定不能（外部到達不可など）の場合は落とさない（結果全滅回避）
-          const ok = x.source === "unknown" ? true : x.is_human;
+          // 判定不能（外部到達不可など）の場合は、人物以外の混入を避けるため落とす
+          const ok = x.source !== "unknown" && x.is_human;
           return { it, ok };
         } catch {
-          // 判定APIが落ちている/ネットワーク障害の場合、検索結果が全滅してUXが悪いので「通す」。
-          // 抽出段階でリダイレクト解決やリンク解析を行うため、ここでは過度に弾かない。
-          return { it, ok: true };
+          // 判定APIが落ちている/ネットワーク障害の場合も、人物以外の混入を避けるため表示しない
+          return { it, ok: false };
         }
       })
     );
