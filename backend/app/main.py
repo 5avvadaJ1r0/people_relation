@@ -23,15 +23,4 @@ def _startup() -> None:
     init_db()
 
 
-@app.get("/health")
-def health() -> dict:
-    return {"ok": True}
-
-
-@app.get("/api/health")
-def api_health() -> dict:
-    # nginx配下で /api/health を叩けるよう互換エンドポイントを用意
-    return {"ok": True}
-
-
 app.include_router(api_router)

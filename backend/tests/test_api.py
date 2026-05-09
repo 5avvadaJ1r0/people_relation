@@ -4,15 +4,33 @@ from fastapi.testclient import TestClient
 
 
 def test_health(client: TestClient) -> None:
-    r = client.get("/health")
+    r = client.get("/api/v1/health")
     assert r.status_code == 200
     assert r.json() == {"ok": True}
 
 
 def test_api_health(client: TestClient) -> None:
-    r = client.get("/api/health")
+    r = client.get("/api/v1/health")
     assert r.status_code == 200
     assert r.json() == {"ok": True}
+
+
+def test_ready(client: TestClient) -> None:
+    r = client.get("/api/v1/ready")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "db": True}
+
+
+def test_api_ready(client: TestClient) -> None:
+    r = client.get("/api/v1/ready")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "db": True}
+
+
+def test_api_v1_ready(client: TestClient) -> None:
+    r = client.get("/api/v1/ready")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "db": True}
 
 
 def test_person_search_empty(client: TestClient) -> None:
