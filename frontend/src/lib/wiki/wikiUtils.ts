@@ -43,6 +43,21 @@ export const hrefToUrl = (href: string): string => {
   return `https://ja.wikipedia.org${href}`;
 };
 
+/** 脚注・外部リンクなど、参照・外部URLが集中する節を wikitext から除去（`[[...]]` カウントのノイズ低減） */
+export const stripNoiseWikiSectionsFromWikitext = (wikitext: string): string => {
+  let w = String(wikitext ?? "");
+  for (const name of ["脚注", "外部リンク"]) {
+    const esc = escapeRegExp(name);
+    // Navboxes のほか、キングレコード等の末尾テンプレ・カテゴリ直前まで（{{キングレコード}} 内の [[...]] を源とするカウントを防ぐ）
+    const re = new RegExp(
+      `\\n==\\s*${esc}\\s*==\\s*\\n[\\s\\S]*?(?=\\n==[^=]|\\n\\{\\{Navboxes|\\n\\n\\{\\{|\\n\\{\\{Normdaten|\\n\\{\\{DEFAULTSORT|\\n\\{\\{デフォルトソート|\\n\\[\\[Category:)`,
+      "i"
+    );
+    w = w.replace(re, "\n");
+  }
+  return w;
+};
+
 export const countLinksFromWikitext = (wikitext: string): Map<string, { count: number; href: string }> => {
   // [[タイトル]] / [[タイトル|表示]] / [[タイトル#節|表示]]
   const re = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, delete, select
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,30 @@ def upsert_person(db: Session, *, name: str, url: str, title: str | None) -> Per
     if title:
         person.title = title
     return person
+
+
+def delete_relations_where_master(db: Session, *, master_id: int) -> int:
+    """主体を master とする forward 行をすべて削除する。"""
+    res = db.execute(delete(Relation).where(Relation.master_person_id == master_id))
+    return int(res.rowcount or 0)
+
+
+def delete_reverse_edges_to_master_from_given_masters(
+    db: Session, *, slave_person_id: int, reverse_master_ids: list[int]
+) -> int:
+    """
+    slave が主体・master が以前 forward で繋がっていた相手、という逆向き行だけ削除する。
+    （主体を再実行したときに残る B->A を掃除する用）
+    """
+    if not reverse_master_ids:
+        return 0
+    res = db.execute(
+        delete(Relation).where(
+            Relation.slave_person_id == slave_person_id,
+            Relation.master_person_id.in_(reverse_master_ids),
+        )
+    )
+    return int(res.rowcount or 0)
 
 
 def upsert_relation(

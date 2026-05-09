@@ -149,6 +149,14 @@ sequenceDiagram
 - **用途**: 関係（主体者→関連者）の point を保存（人物/関係ともに upsert）
 - **Content-Type**: `application/json`
 
+#### クエリパラメータ
+- **`executed_master_url`**（任意）: フロントが Wikipedia 抽出の「主体者」の URL を渡す。値が一致する **person が既に DB にいるときのみ**、保存ループの前に次を実行する。
+  1. その人物を **master** とする `relation` 行を **すべて DELETE**
+  2. 直前の forward でその主体が **slave** だった逆向き（旧 slave → 主体）の `relation` 行だけ DELETE（再実行で付け替わった関連の reverse を掃除するため）
+  3. その後、ペイロードどおりに upsert（新しい `relation.id` が振られる）。**他主体が master の関係**（他人が主体として保存した行）は触れない。
+
+初回登録で person がまだ無い場合は DELETE はスキップされる。
+
 #### リクエストボディ
 `RelationIn[]`
 
@@ -196,6 +204,10 @@ sequenceDiagram
     participant DB as Postgres (SQLAlchemy)
 
     FE->>API: POST /api/v1/relation (RelationIn[])
+    opt executed_master_url かつ該当 person 既存
+        API->>DB: DELETE relation WHERE master_id=主体
+        API->>DB: DELETE relation WHERE slave_id=主体 AND master_id IN (旧 forward の相手)
+    end
     loop for each RelationIn
         API->>DB: SELECT person WHERE url=master.url
         alt master not found
@@ -219,7 +231,7 @@ sequenceDiagram
         end
     end
 
-    opt executed_master_url クエリあり
+    opt executed_master_url クエリあり（後処理）
         API->>DB: SELECT person WHERE url=executed_master_url
         API->>DB: UPDATE executed_as_master / executed_as_master_at
     end
@@ -486,9 +498,10 @@ sequenceDiagram
 ### C) 2-hop 関連者抽出（フロント直叩き + バックエンド人物判定）
 
 - **呼び出し元**: `extractRelationsTwoHop()`
-- **外部API（Wikipedia）**: `action=query`（extracts/info/redirects）と `action=parse`（text/wikitext/links）
+- **外部API（Wikipedia）**: `action=query`（extracts/info/redirects）と `action=parse`（text/wikitext。ns0 リンクは `prop=links` ではなくノイズ節除去後の HTML から抽出）
 - **補足**: Wikipedia/Wikidataへの過剰連打を避けるため、フロント側で **最小間隔（既定150ms）+ 429/503/504時リトライ** を行う（`ExternalApiFetcher`）。
 - **人物判定**: 候補の一部はバックエンド `GET /api/v1/wiki/is_human` を呼び出して判定（結果はバックエンド側でRedisキャッシュ）。
+- **「脚注」「外部リンク」節・カテゴリ・navbox の除外**: 抽出・共起カウント・hatnote 用リンク集合のノイズを減らすため、`action=parse` の HTML から **`<section aria-labelledby="脚注">` / `<section aria-labelledby="外部リンク">`（実ページ相当）**、および **`h2#脚注` / `h2#外部リンク` の見出しブロックから次の `mw-heading2` または最初の `navbox` / パーサレポート手前**までを除去する。続けて **`class` にトークン `navbox` を含む `<div>` / `<table>`**（`navbox-inner` のみのクラスは対象外）をネスト対応ですべて除去し、**`{{キングレコード}}` 等のナビゲーションに由来する同僚歌手リンク**を参照対象から外す。**`id="catlinks"`（カテゴリ表示ブロック）**はネストした `<div>` ごと除去する（API レスポンスに含まれる場合のみ）。`prop=extracts` のプレーン本文は、**`脚注` 見出し行から次のよくある見出し（注釈・出典・参考文献・外部リンク等）の直前まで**、および末尾の **`外部リンク` 見出し行以降**を除去する。wikitext の `[[...]]` カウントでは、`== 脚注 ==` / `== 外部リンク ==` から **次のレベル2見出し**、または **`{{Navboxes`** / **空行のあとの `{{`**（`\n\n{{`）、**`{{Normdaten}}`**、**`[[Category:`** 等の直前までを除去する。
 
 #### C-1) 主体者ページ取得（並列）
 
@@ -510,11 +523,9 @@ sequenceDiagram
         FE->>WP: GET /w/api.php?action=query&prop=info&titles=masterTitle&redirects=1&origin=*
         WP-->>FE: canonical title (JSON)
     and
-        FE->>WP: GET /w/api.php?action=parse&prop=links&page=masterTitle&origin=*
-        WP-->>FE: links (JSON)
-    and
         FE->>WP: GET /w/api.php?action=parse&prop=text&page=masterTitle&redirects=1&origin=*
-        WP-->>FE: html text (JSON)
+        WP-->>FE: html (JSON)
+        Note over FE: メソッドごとに複数回取得する場合あり。脚注・外部リンク等除去後にプレーン本文・ns0リンク集合（旧 prop=links は脚注・外部リンク内も含むため不使用）・hatnote 判定に利用
     end
     FE-->>UI: 進捗更新 + 抽出処理継続
 ```
@@ -574,20 +585,22 @@ sequenceDiagram
             FE->>WP: GET /w/api.php?action=parse&prop=wikitext&page=slaveTitle&redirects=1&origin=*
             WP-->>FE: wikitext (JSON)
         and
-            FE->>WP: GET /w/api.php?action=parse&prop=links&page=slaveTitle&origin=*
-            WP-->>FE: links (JSON)
-        and
             FE->>WP: GET /w/api.php?action=query&prop=extracts&explaintext=1&titles=slaveTitle&redirects=1&origin=*
             WP-->>FE: extract (JSON)
         and
             FE->>WP: GET /w/api.php?action=parse&prop=text&page=slaveTitle&redirects=1&origin=*
-            WP-->>FE: html text (JSON)
+            WP-->>FE: html (JSON)
+            Note over FE: メソッドごとに複数回取得する場合あり。脚注・外部リンク除去後にプレーン本文・ns0リンク集合に利用
         end
-        Note over FE: wikitext/links/本文から master言及を数えて reversePoint を算出
+        Note over FE: wikitext・本文・ノイズ除去後HTML由来の ns0 リンクから master言及を数えて reversePoint を算出
     end
 ```
 
 ## 変更履歴
+- 2026-05-09: `POST /api/v1/relation` で `executed_master_url` 指定時、保存前に当該主体の forward と関連 reverse を削除してから upsert（同一主体で Wikipedia 再実行したときの旧関連を残さない）
+- 2026-05-09: parse HTML から `class` に `navbox` を含むブロックを除去（外部リンク直下のレーベルnavboxに含まれる名前リンクの混入防止）。wikitext は外部リンク節の終端境界を `{{Navboxes` 以外（`\n\n{{`・Normdaten・Category 等）にも拡張
+- 2026-05-09: parse HTML から `id="catlinks"`（カテゴリリンクブロック）を除去して参照・リンク抽出の対象外にする
+- 2026-05-09: Wikipedia の ns0 リンク集合を `prop=links` ではなくノイズ節除去後の parse HTML から抽出するよう変更（脚注・外部リンク由来リンクの混入防止）
 - 2026-05-09: CDN/別オリジン配信向け（`CORS_ORIGINS`・`VITE_API_BASE_URL`・実行時 `window.__PEOPLE_RELATION__`）を追記
 - 2026-05-08: 初版作成（現行実装に基づく）
 

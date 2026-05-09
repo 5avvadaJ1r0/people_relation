@@ -116,6 +116,67 @@ def test_post_relation_and_person_endpoints(client: TestClient) -> None:
     assert agg[0]["reverse_point"] == 2
 
 
+def test_post_relation_replaces_edges_when_executed_master_url(
+    client: TestClient,
+) -> None:
+    """同一 executed_master_url で再 POST すると、当該主体の forward と関連 reverse が付け替わる。"""
+    url_a = "https://example.com/replace-master"
+    url_b = "https://example.com/replace-b"
+    url_c = "https://example.com/replace-c"
+    first = [
+        {
+            "master": {"name": "替甲", "url": url_a, "title": "替甲"},
+            "slave": {"name": "替乙", "url": url_b, "title": "替乙"},
+            "point": 9,
+        },
+        {
+            "master": {"name": "替乙", "url": url_b, "title": "替乙"},
+            "slave": {"name": "替甲", "url": url_a, "title": "替甲"},
+            "point": 7,
+        },
+    ]
+    r1 = client.post(
+        "/api/v1/relation",
+        json=first,
+        params={"executed_master_url": url_a},
+    )
+    assert r1.status_code == 200
+    master_id = r1.json()[0]["master"]["id"]
+
+    second = [
+        {
+            "master": {"name": "替甲", "url": url_a, "title": "替甲"},
+            "slave": {"name": "替丙", "url": url_c, "title": "替丙"},
+            "point": 4,
+        },
+        {
+            "master": {"name": "替丙", "url": url_c, "title": "替丙"},
+            "slave": {"name": "替甲", "url": url_a, "title": "替甲"},
+            "point": 3,
+        },
+    ]
+    r2 = client.post(
+        "/api/v1/relation",
+        json=second,
+        params={"executed_master_url": url_a},
+    )
+    assert r2.status_code == 200
+
+    r_rel = client.get(f"/api/v1/person/{master_id}/relations")
+    assert r_rel.status_code == 200
+    rels = r_rel.json()
+    assert len(rels) == 1
+    assert rels[0]["slave"]["url"] == url_c
+    assert rels[0]["point"] == 4
+
+    r_agg = client.get(f"/api/v1/person/{master_id}/relations_aggregate")
+    assert r_agg.status_code == 200
+    agg = r_agg.json()
+    assert len(agg) == 1
+    assert agg[0]["slave"]["url"] == url_c
+    assert agg[0]["total_point"] == 7
+
+
 def test_post_relation_without_executed_master_url(client: TestClient) -> None:
     payload = [
         {

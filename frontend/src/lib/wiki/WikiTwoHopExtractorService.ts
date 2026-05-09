@@ -9,6 +9,7 @@ import {
   hrefToUrl,
   normalizeWikiLinkTitle,
   reverseLinkScoreFromWikitextAndParse,
+  stripNoiseWikiSectionsFromWikitext,
 } from "./wikiUtils";
 import type { WikiApiClient } from "./WikiApiClient";
 
@@ -46,7 +47,7 @@ export class WikiTwoHopExtractorService {
     const masterRedirects = await this.wiki.fetchRedirectTitles(canonicalTitle).catch(() => []);
     onProgress?.({ phase: "主体者情報解析処理中", done: 0, total: 1 });
     await yieldToUi();
-    const linkCounts = countLinksFromWikitext(wikitext);
+    const linkCounts = countLinksFromWikitext(stripNoiseWikiSectionsFromWikitext(wikitext));
 
     const text = extractText.replace(/\s+/g, " ").trim();
     const masterHtmlText = masterHtmlTextRaw.replace(/\s+/g, " ").trim();
@@ -235,7 +236,7 @@ export class WikiTwoHopExtractorService {
               this.wiki.fetchExtractTextByTitle(slaveTitle).catch(() => ""),
               this.wiki.fetchParsePlainTextByTitle(slaveTitle).catch(() => ""),
             ]);
-            const slaveLinkCounts = countLinksFromWikitext(slaveWikitext);
+            const slaveLinkCounts = countLinksFromWikitext(stripNoiseWikiSectionsFromWikitext(slaveWikitext));
             const linkScore = reverseLinkScoreFromWikitextAndParse(
               slaveLinkCounts,
               parseLinkTitles,

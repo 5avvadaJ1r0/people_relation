@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from sqlalchemy import select
+
 from app import crud
 from app.db import SessionLocal
+from app.model import Person, Relation
 from app.schemas import PersonOut, RelationIn, RelationOut
 
 
@@ -13,6 +16,24 @@ def save_relations_batch(
     db = SessionLocal()
     try:
         out: list[RelationOut] = []
+        if executed_master_url:
+            url_n = crud.normalize_url(executed_master_url)
+            mp = db.scalar(select(Person).where(Person.url == url_n))
+            if mp is not None:
+                prev_slave_ids = list(
+                    db.scalars(
+                        select(Relation.slave_person_id).where(
+                            Relation.master_person_id == mp.id
+                        )
+                    ).all()
+                )
+                crud.delete_relations_where_master(db, master_id=mp.id)
+                crud.delete_reverse_edges_to_master_from_given_masters(
+                    db,
+                    slave_person_id=mp.id,
+                    reverse_master_ids=prev_slave_ids,
+                )
+
         for item in payload:
             master = crud.upsert_person(
                 db, name=item.master.name, url=item.master.url, title=item.master.title

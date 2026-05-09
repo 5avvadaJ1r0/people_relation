@@ -405,7 +405,7 @@ export const App = () => {
             </div>
           ) : (
             <div className="subtitle" style={{ marginBottom: 10 }}>
-              左の主体者検索結果から人物を選択してください。
+              主体者検索結果から人物を選択してください。
             </div>
           )}
 
