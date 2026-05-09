@@ -29,12 +29,21 @@ def upsert_person(db: Session, *, name: str, url: str, title: str | None) -> Per
     return person
 
 
-def upsert_relation(db: Session, *, master_id: int, slave_id: int, point: int) -> Relation:
+def upsert_relation(
+    db: Session, *, master_id: int, slave_id: int, point: int
+) -> Relation:
     rel = db.scalar(
-        select(Relation).where(and_(Relation.master_person_id == master_id, Relation.slave_person_id == slave_id))
+        select(Relation).where(
+            and_(
+                Relation.master_person_id == master_id,
+                Relation.slave_person_id == slave_id,
+            )
+        )
     )
     if rel is None:
-        rel = Relation(master_person_id=master_id, slave_person_id=slave_id, point=point)
+        rel = Relation(
+            master_person_id=master_id, slave_person_id=slave_id, point=point
+        )
         db.add(rel)
         # 同一リクエスト内で同じ(master,slave)が複数回現れると、未flushの間はSELECTで検出できず
         # commit/flush時にユニーク制約違反(500)になるため、ここでflushして早めに確定させる。
@@ -45,7 +54,9 @@ def upsert_relation(db: Session, *, master_id: int, slave_id: int, point: int) -
     return rel
 
 
-def search_persons(db: Session, *, name: str, limit: int = 20) -> list[tuple[Person, bool]]:
+def search_persons(
+    db: Session, *, name: str, limit: int = 20
+) -> list[tuple[Person, bool]]:
     q = f"%{name.strip()}%"
     persons = db.scalars(select(Person).where(Person.name.ilike(q)).limit(limit)).all()
     if not persons:
@@ -54,12 +65,16 @@ def search_persons(db: Session, *, name: str, limit: int = 20) -> list[tuple[Per
     out: list[tuple[Person, bool]] = []
     for p in persons:
         # 「前回実行あり」は主体者として実行した人のみを対象にする
-        executed = getattr(p, "executed_as_master_at", None) is not None or bool(getattr(p, "executed_as_master", False))
+        executed = getattr(p, "executed_as_master_at", None) is not None or bool(
+            getattr(p, "executed_as_master", False)
+        )
         out.append((p, executed))
     return out
 
 
-def get_relations_for_master(db: Session, *, master_id: int, limit: int = 50) -> list[Relation]:
+def get_relations_for_master(
+    db: Session, *, master_id: int, limit: int = 50
+) -> list[Relation]:
     return (
         db.query(Relation)
         .where(Relation.master_person_id == master_id)
@@ -80,7 +95,10 @@ def get_relation_aggregates_for_master(db: Session, *, master_id: int, limit: in
         db.query(r_fwd, r_rev)
         .outerjoin(
             r_rev,
-            and_(r_rev.master_person_id == r_fwd.slave_person_id, r_rev.slave_person_id == r_fwd.master_person_id),
+            and_(
+                r_rev.master_person_id == r_fwd.slave_person_id,
+                r_rev.slave_person_id == r_fwd.master_person_id,
+            ),
         )
         .where(r_fwd.master_person_id == master_id)
         .order_by(r_fwd.point.desc(), r_fwd.id.asc())
@@ -102,4 +120,3 @@ def mark_executed_as_master_by_url(db: Session, *, url: str) -> Person | None:
     person.executed_as_master = True
     person.executed_as_master_at = datetime.now()
     return person
-

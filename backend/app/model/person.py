@@ -29,7 +29,9 @@ class Person(Base):
         DateTime(timezone=False),
         nullable=True,
     )
-    created: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), nullable=False)
+    created: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now(), nullable=False
+    )
     updated: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
         server_default=func.now(),
@@ -47,4 +49,3 @@ class Person(Base):
         foreign_keys="Relation.slave_person_id",
         cascade="all, delete-orphan",
     )
-

@@ -14,13 +14,26 @@ def save_relations_batch(
     try:
         out: list[RelationOut] = []
         for item in payload:
-            master = crud.upsert_person(db, name=item.master.name, url=item.master.url, title=item.master.title)
-            slave = crud.upsert_person(db, name=item.slave.name, url=item.slave.url, title=item.slave.title)
-            rel = crud.upsert_relation(db, master_id=master.id, slave_id=slave.id, point=item.point)
+            master = crud.upsert_person(
+                db, name=item.master.name, url=item.master.url, title=item.master.title
+            )
+            slave = crud.upsert_person(
+                db, name=item.slave.name, url=item.slave.url, title=item.slave.title
+            )
+            rel = crud.upsert_relation(
+                db, master_id=master.id, slave_id=slave.id, point=item.point
+            )
             out.append(
                 RelationOut(
-                    master=PersonOut(id=master.id, name=master.name, title=master.title, url=master.url),
-                    slave=PersonOut(id=slave.id, name=slave.name, title=slave.title, url=slave.url),
+                    master=PersonOut(
+                        id=master.id,
+                        name=master.name,
+                        title=master.title,
+                        url=master.url,
+                    ),
+                    slave=PersonOut(
+                        id=slave.id, name=slave.name, title=slave.title, url=slave.url
+                    ),
                     point=rel.point,
                 )
             )

@@ -10,7 +10,9 @@ def search_persons(name: str) -> list[PersonSearchOut]:
     try:
         rows = crud.search_persons(db, name=name, limit=20)
         return [
-            PersonSearchOut(id=p.id, name=p.name, title=p.title, url=p.url, has_relations=has_rel)
+            PersonSearchOut(
+                id=p.id, name=p.name, title=p.title, url=p.url, has_relations=has_rel
+            )
             for p, has_rel in rows
         ]
     finally:
@@ -46,13 +48,17 @@ def list_person_relations(person_id: int) -> list[RelationOut] | None:
         db.close()
 
 
-def list_person_relations_aggregate(person_id: int) -> list[RelationAggregateOut] | None:
+def list_person_relations_aggregate(
+    person_id: int,
+) -> list[RelationAggregateOut] | None:
     db = SessionLocal()
     try:
         person = crud.get_person(db, person_id)
         if person is None:
             return None
-        rows = crud.get_relation_aggregates_for_master(db, master_id=person_id, limit=50)
+        rows = crud.get_relation_aggregates_for_master(
+            db, master_id=person_id, limit=50
+        )
         out: list[RelationAggregateOut] = []
         for fwd, rev in rows:
             reverse_point = rev.point if rev is not None else 0

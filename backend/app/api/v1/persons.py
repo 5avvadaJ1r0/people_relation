@@ -3,7 +3,11 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from app.schemas import PersonSearchOut, RelationAggregateOut, RelationOut
-from app.services.persons import list_person_relations, list_person_relations_aggregate, search_persons
+from app.services.persons import (
+    list_person_relations,
+    list_person_relations_aggregate,
+    search_persons,
+)
 
 router = APIRouter(prefix="/person", tags=["person"])
 
@@ -21,7 +25,9 @@ def person_relations(person_id: int) -> list[RelationOut]:
     return items
 
 
-@router.get("/{person_id}/relations_aggregate", response_model=list[RelationAggregateOut])
+@router.get(
+    "/{person_id}/relations_aggregate", response_model=list[RelationAggregateOut]
+)
 def person_relations_aggregate(person_id: int) -> list[RelationAggregateOut]:
     items = list_person_relations_aggregate(person_id)
     if items is None:

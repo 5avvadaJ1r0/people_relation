@@ -52,7 +52,12 @@ async def is_human_by_title(title: str) -> HumanCheck:
             if not isinstance(cached, (str, bytes, bytearray)):
                 cached = str(cached)
             d = json.loads(cached)
-            return HumanCheck(title=t, qid=d.get("qid"), is_human=_coerce_bool(d.get("is_human")), source="cache")
+            return HumanCheck(
+                title=t,
+                qid=d.get("qid"),
+                is_human=_coerce_bool(d.get("is_human")),
+                source="cache",
+            )
         except Exception:
             pass
 
@@ -97,12 +102,12 @@ async def is_human_by_title(title: str) -> HumanCheck:
         except Exception:
             # Wikidata 取得失敗も一時障害の可能性が高い。誤キャッシュは避ける。
             return HumanCheck(title=t, qid=qid, is_human=False, source="unknown")
-        ent = (((wd.get("entities") or {}).get(qid)) or {})
+        ent = ((wd.get("entities") or {}).get(qid)) or {}
         claims = ent.get("claims") or {}
         p31 = claims.get("P31") or []
         is_human = False
         for c in p31:
-            dv = (((c.get("mainsnak") or {}).get("datavalue") or {}).get("value") or {})
+            dv = ((c.get("mainsnak") or {}).get("datavalue") or {}).get("value") or {}
             if dv.get("id") == HUMAN_QID:
                 is_human = True
                 break

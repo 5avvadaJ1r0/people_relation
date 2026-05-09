@@ -6,7 +6,9 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from app.settings import settings
 
 engine = create_engine(settings.database_url, pool_pre_ping=True)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+SessionLocal = sessionmaker(
+    bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+)
 
 Base = declarative_base()
 
@@ -25,4 +27,3 @@ def init_db():
     from app.model import Person, Relation  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
-

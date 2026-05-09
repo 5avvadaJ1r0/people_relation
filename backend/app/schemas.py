@@ -52,4 +52,3 @@ class PersonSearchOut(BaseModel):
     title: str
     url: str
     has_relations: bool
-

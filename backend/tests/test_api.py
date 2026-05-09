@@ -39,17 +39,37 @@ def test_person_relations_aggregate_not_found(client: TestClient) -> None:
 def test_post_relation_and_person_endpoints(client: TestClient) -> None:
     payload = [
         {
-            "master": {"name": "甲", "url": "https://example.com/a", "title": "甲タイトル"},
-            "slave": {"name": "乙", "url": "https://example.com/b", "title": "乙タイトル"},
+            "master": {
+                "name": "甲",
+                "url": "https://example.com/a",
+                "title": "甲タイトル",
+            },
+            "slave": {
+                "name": "乙",
+                "url": "https://example.com/b",
+                "title": "乙タイトル",
+            },
             "point": 3,
         },
         {
-            "master": {"name": "乙", "url": "https://example.com/b", "title": "乙タイトル"},
-            "slave": {"name": "甲", "url": "https://example.com/a", "title": "甲タイトル"},
+            "master": {
+                "name": "乙",
+                "url": "https://example.com/b",
+                "title": "乙タイトル",
+            },
+            "slave": {
+                "name": "甲",
+                "url": "https://example.com/a",
+                "title": "甲タイトル",
+            },
             "point": 2,
         },
     ]
-    r = client.post("/api/v1/relation", json=payload, params={"executed_master_url": "https://example.com/a"})
+    r = client.post(
+        "/api/v1/relation",
+        json=payload,
+        params={"executed_master_url": "https://example.com/a"},
+    )
     assert r.status_code == 200
     body = r.json()
     assert len(body) == 2
