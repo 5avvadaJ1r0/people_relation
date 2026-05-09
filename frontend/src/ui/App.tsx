@@ -7,6 +7,7 @@ import {
   wikiSearchPeopleIncludingExact,
 } from "../lib/wiki";
 import type { ApiPerson, RelationIn, RelationView, WikiSearchItem } from "../lib/types";
+import urlQrCodeSvg from "../assets/images/svg/url-qr-code.svg";
 
 type Selected = {
   wiki: WikiSearchItem;
@@ -57,6 +58,7 @@ export const App = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const detailRef = useRef<HTMLDivElement | null>(null);
+  const queryInputRef = useRef<HTMLInputElement | null>(null);
 
   const [wikiResults, setWikiResults] = useState<WikiSearchItem[]>([]);
   const [serverMatches, setServerMatches] = useState<ApiPerson[]>([]);
@@ -73,6 +75,7 @@ export const App = () => {
 
   const wikiExtract = useWikiTwoHopExtractor();
   const [progress, setProgress] = useState<{ phase: string; done: number; total: number } | null>(null);
+  const isSearchProgress = progress?.phase === "検索結果の人物判定";
   const progressPct = useMemo(() => {
     if (!progress) return 0;
     if (progress.total <= 0) return 0;
@@ -289,24 +292,49 @@ export const App = () => {
           <div className="title">著名人関連者リストアップ</div>
           <div className="subtitle">ネット上から著名人の関連者をリストアップするツールです</div>
         </div>
-        <div className="subtitle"></div>
+        <div className="headerQr" aria-hidden="true">
+          <img src={urlQrCodeSvg} alt="" width={68} height={68} />
+        </div>
       </div>
 
       <div className="grid">
         <div className="card">
           <h2>❶ 主体者入力</h2>
           <div className="row">
-            <input
-              id="query"
-              name="query"
-              type="text"
-              value={query}
-              placeholder="例: 木村拓哉"
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onSearch();
-              }}
-            />
+            <div className="textInputWrap">
+              <input
+                ref={queryInputRef}
+                id="query"
+                name="query"
+                type="text"
+                value={query}
+                placeholder="例: 木村拓哉"
+                className={query.trim().length > 0 ? "hasRightIcon" : ""}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onSearch();
+                }}
+              />
+              {query.trim().length > 0 && (
+                <button
+                  type="button"
+                  className="textInputRightIcon"
+                  aria-label="入力をクリア"
+                  title="クリア"
+                  onClick={() => {
+                    setQuery("");
+                    window.setTimeout(() => queryInputRef.current?.focus(), 0);
+                  }}
+                >
+                  <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false">
+                    <path
+                      d="M6.2 6.2a1 1 0 0 1 1.4 0L10 8.6l2.4-2.4a1 1 0 1 1 1.4 1.4L11.4 10l2.4 2.4a1 1 0 0 1-1.4 1.4L10 11.4l-2.4 2.4a1 1 0 0 1-1.4-1.4L8.6 10 6.2 7.6a1 1 0 0 1 0-1.4Z"
+                      fill="currentColor"
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
             <button className="primary" disabled={busy || query.trim().length === 0} onClick={onSearch}>
               検索
             </button>
@@ -318,7 +346,7 @@ export const App = () => {
             </div>
           )}
 
-          {progress && (
+          {progress && isSearchProgress && (
             <div className="progressWrap">
               <div className="muted" style={{ marginBottom: 6, fontSize: 12 }}>
                 {progress.phase}（{progress.done}/{progress.total}）
@@ -350,10 +378,21 @@ export const App = () => {
             })}
             {wikiResults.length === 0 && <div className="subtitle">まだ検索していません。</div>}
           </div>
+
+          {progress && !isSearchProgress && (
+            <div className="progressWrap">
+              <div className="muted" style={{ marginBottom: 6, fontSize: 12 }}>
+                {progress.phase}（{progress.done}/{progress.total}）
+              </div>
+              <div className="progress">
+                <div className="bar" style={{ width: `${progressPct}%` }} />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="card" ref={detailRef}>
-          <h2>❸ 主体者・関連者</h2>
+          <h2>❸ 主体者・関連者<span className="subtitle">（上位20名のみ表示）</span></h2>
           {selected ? (
             <div className="muted" style={{ marginBottom: 10, display: "flex", justifyContent: "space-between" }}>
               <span>
@@ -361,7 +400,7 @@ export const App = () => {
               </span>
               <span>
                 表示元:{" "}
-                <span className="pill">{source === "server" ? "キャッシュ" : source === "wikipedia" ? "Wikipedia" : "-"}</span>
+                <span className="pill">{source === "server" ? "キャッシュ" : source === "wikipedia" ? "最新版" : "-"}</span>
               </span>
             </div>
           ) : (
@@ -374,7 +413,7 @@ export const App = () => {
             <table className="table">
               <thead>
                 <tr>
-                  <th>関連者<span className="subtitle">（上位20名のみ表示）</span></th>
+                  <th>関連者</th>
                   <th style={{ width: 80, textAlign: "right" }}>主体値</th>
                   <th style={{ width: 80, textAlign: "right" }}>関連値</th>
                   <th style={{ width: 80, textAlign: "right" }}>合計値</th>

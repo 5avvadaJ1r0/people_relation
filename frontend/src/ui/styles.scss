@@ -60,6 +60,27 @@ a {
   box-shadow: var(--shadow-sm);
 }
 
+.headerQr {
+  display: none;
+}
+
+@media (min-width: 981px) {
+  .headerQr {
+    display: block;
+    width: 68px;
+    height: 68px;
+    flex: 0 0 68px;
+    border: 1px solid gray;
+    background: #ffffff;
+  }
+
+  .headerQr img {
+    display: block;
+    width: 66px;
+    height: 66px;
+  }
+}
+
 .title {
   font-size: 16px;
   font-weight: 500;
@@ -69,6 +90,7 @@ a {
 .subtitle {
   color: var(--muted);
   font-size: 12px;
+  font-weight: 400;
 }
 
 .grid {
@@ -106,6 +128,11 @@ a {
   gap: 10px;
 }
 
+.textInputWrap {
+  position: relative;
+  flex: 1;
+}
+
 input[type="text"] {
   width: 100%;
   font-size: 16px;
@@ -119,6 +146,38 @@ input[type="text"] {
 
   &:focus {
     border-color: rgba(37, 99, 235, 0.45);
+    box-shadow: var(--ring);
+  }
+}
+
+input[type="text"].hasRightIcon {
+  padding-right: 40px;
+}
+
+.textInputRightIcon {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  box-shadow: none;
+
+  &:hover {
+    background: rgba(17, 24, 39, 0.06);
+    color: var(--text);
+  }
+
+  &:focus-visible {
+    outline: none;
     box-shadow: var(--ring);
   }
 }
