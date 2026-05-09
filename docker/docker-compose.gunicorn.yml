@@ -1,0 +1,27 @@
+# Gunicorn（UvicornWorker）で API を複数プロセス起動する。
+# 既定の api は単一 uvicorn。本ファイルで command のみ上書きする。
+#
+# 例:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.gunicorn.yml --env-file .env up --build
+#
+# ワーカー数・タイムアウトはプロジェクトルートの .env に GUNICORN_* を書く（未設定時は下記デフォルト）。
+
+services:
+  api:
+    command:
+      - gunicorn
+      - app.main:app
+      - -k
+      - uvicorn.workers.UvicornWorker
+      - -b
+      - 0.0.0.0:8000
+      - --workers
+      - "${GUNICORN_WORKERS:-4}"
+      - --timeout
+      - "${GUNICORN_TIMEOUT:-120}"
+      - --graceful-timeout
+      - "${GUNICORN_GRACEFUL_TIMEOUT:-30}"
+      - --access-logfile
+      - "-"
+      - --error-logfile
+      - "-"

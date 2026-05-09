@@ -37,6 +37,31 @@ docker compose -f docker/docker-compose.yml --env-file .env up --build
 docker compose -f docker/docker-compose.yml --env-file .env down
 ```
 
+## 起動方法（Gunicorn：複数ワーカー）
+
+VM・自前サーバーなど「プロセスを複数立てたい」環境では、親プロセスに **Gunicorn**、ワーカーに **Uvicorn**（`uvicorn.workers.UvicornWorker`）を使うのが一般的です。`backend/requirements.txt` に `gunicorn` を含めています。
+
+### Docker Compose で Gunicorn を使う
+
+ベースの compose に `docker/docker-compose.gunicorn.yml` を重ねます（`api` の `command` だけ上書き）。
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.gunicorn.yml --env-file .env up --build
+```
+
+ワーカー数やタイムアウトはプロジェクトルートの `.env` で任意（未設定時は compose ファイル内のデフォルト）。サンプルは `.env.example` を参照。
+
+### Docker を使わず直接起動する例
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+gunicorn app.main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --workers 4 --timeout 120
+```
+
+（`DATABASE_URL` / `REDIS_URL` などは従来どおり環境変数で渡す。）
+
 ## フロントを CDN（別ホスト）で配信する場合
 
 API と画面のオリジンが分かれるときは、バックエンドの `CORS_ORIGINS` にユーザーが開くフロントの origin（例: `https://cdn.example.com`）を追加する。フロントのビルドでは `VITE_API_BASE_URL` に API のベース URL（例: `https://api.example.com/api`）を渡す。実行時にだけ URL を差し替えたい場合は `index.html` のコメント参照。詳細は `doc/api.md` の「CDN・別オリジンでフロントを配信する場合」。

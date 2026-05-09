@@ -113,10 +113,6 @@ export const App = () => {
     };
   }, [selected, relations.length, error, progress?.phase]);
 
-  useEffect(() => {
-    // no-op: kuromoji辞書の事前ロードは廃止（Wikipediaリンク根拠に変更）
-  }, []);
-
   const resetDetail = () => {
     setSelected(null);
     setRelations([]);
