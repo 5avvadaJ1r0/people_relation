@@ -1,5 +1,6 @@
 import type { WikiSearchItem } from "../types";
 import { ExternalApiFetcher } from "./ExternalApiFetcher";
+import { isNoiseWikiSectionFragment } from "./wikiUtils";
 
 const WIKI_API = "https://ja.wikipedia.org/w/api.php";
 
@@ -358,10 +359,17 @@ export class WikiApiClient {
   /** ノイズ節除去後の HTML に現れる ns0 の `/wiki/` リンクタイトルのみ（`prop=links` は脚注・外部リンク内も含むため使わない） */
   private collectNs0WikiTitlesFromHtml(html: string, normalize: (t: string) => string): Set<string> {
     const set = new Set<string>();
-    const reAllHref = /href="\/wiki\/([^"#?]+)"/g;
+    const reAllHref = /href="\/wiki\/([^"]+)"/g;
     let a: RegExpExecArray | null;
     while ((a = reAllHref.exec(html))) {
-      const encoded = a[1] ?? "";
+      const path = a[1] ?? "";
+      if (!path) continue;
+      const qIdx = path.indexOf("?");
+      const pathOnly = qIdx >= 0 ? path.slice(0, qIdx) : path;
+      const hashIdx = pathOnly.indexOf("#");
+      const encoded = hashIdx >= 0 ? pathOnly.slice(0, hashIdx) : pathOnly;
+      const fragment = hashIdx >= 0 ? pathOnly.slice(hashIdx + 1) : "";
+      if (fragment && isNoiseWikiSectionFragment(fragment)) continue;
       if (!encoded) continue;
       const title = normalize(encoded);
       if (!title) continue;
@@ -416,10 +424,17 @@ export class WikiApiClient {
     while ((m = reBlock.exec(html))) hatnoteBlocks.push(m[0]);
     const blockText = hatnoteBlocks.join("\n");
 
-    const reHref = /href="\/wiki\/([^"#?]+)"/g;
+    const reHref = /href="\/wiki\/([^"]+)"/g;
     let h: RegExpExecArray | null;
     while ((h = reHref.exec(blockText))) {
-      const encoded = h[1] ?? "";
+      const path = h[1] ?? "";
+      if (!path) continue;
+      const qIdx = path.indexOf("?");
+      const pathOnly = qIdx >= 0 ? path.slice(0, qIdx) : path;
+      const hashIdx = pathOnly.indexOf("#");
+      const encoded = hashIdx >= 0 ? pathOnly.slice(0, hashIdx) : pathOnly;
+      const fragment = hashIdx >= 0 ? pathOnly.slice(hashIdx + 1) : "";
+      if (fragment && isNoiseWikiSectionFragment(fragment)) continue;
       if (!encoded) continue;
       const title = normalize(encoded);
       if (!title) continue;

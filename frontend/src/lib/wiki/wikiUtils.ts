@@ -43,6 +43,12 @@ export const hrefToUrl = (href: string): string => {
   return `https://ja.wikipedia.org${href}`;
 };
 
+/** `[[記事#脚注|…]]` / `/wiki/記事#脚注` のように、脚注・外部リンク**節への参照**は共起カウントから除外する */
+export const isNoiseWikiSectionFragment = (fragment: string): boolean => {
+  const n = normalizeWikiLinkTitle(String(fragment ?? "").replace(/\+/g, " "));
+  return n === "脚注" || n === "外部リンク";
+};
+
 /** 脚注・外部リンクなど、参照・外部URLが集中する節を wikitext から除去（`[[...]]` カウントのノイズ低減） */
 export const stripNoiseWikiSectionsFromWikitext = (wikitext: string): string => {
   let w = String(wikitext ?? "");
@@ -60,11 +66,13 @@ export const stripNoiseWikiSectionsFromWikitext = (wikitext: string): string => 
 
 export const countLinksFromWikitext = (wikitext: string): Map<string, { count: number; href: string }> => {
   // [[タイトル]] / [[タイトル|表示]] / [[タイトル#節|表示]]
-  const re = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
+  const re = /\[\[([^\]|#]+)(?:#([^\]|]+))?(?:\|[^\]]+)?\]\]/g;
   const map = new Map<string, { count: number; href: string }>();
   let m: RegExpExecArray | null;
   while ((m = re.exec(wikitext))) {
     const target = (m[1] ?? "").trim();
+    const fragment = (m[2] ?? "").trim();
+    if (fragment && isNoiseWikiSectionFragment(fragment)) continue;
     if (!target) continue;
     // 特別ページ等（: を含む）を除外
     if (target.includes(":")) continue;
