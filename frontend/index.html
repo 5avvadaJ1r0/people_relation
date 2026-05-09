@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>著名人関連者リストアップ</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!--
+      CDN 等で API を別オリジンに置く場合、ビルド時の VITE_API_BASE_URL に加え、
+      このブロックより前に次を挿入すると同一静的ファイルで API 先だけ差し替え可能:
+      <script>window.__PEOPLE_RELATION__ = { apiBaseUrl: "https://api.example.com/api" };</script>
+    -->
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

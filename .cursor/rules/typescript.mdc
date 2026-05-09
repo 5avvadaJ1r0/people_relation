@@ -1,0 +1,10 @@
+---
+description: TypeScript coding style
+globs: ["**/*.ts", "**/*.tsx"]
+alwaysApply: true
+---
+
+- Always use arrow functions instead of function declarations.
+- Never use `function xxx() {}` syntax.
+- Use const for all function definitions.
+- Prefer concise modern TypeScript syntax.

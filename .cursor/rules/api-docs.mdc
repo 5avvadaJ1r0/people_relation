@@ -1,0 +1,20 @@
+---
+description: API documentation requirements
+globs: ["**/*.ts", "**/*.tsx"]
+alwaysApply: true
+---
+
+# API Documentation Rules
+
+- Whenever adding or modifying API integrations, always update related documentation.
+- Documentation must include:
+  - API purpose
+  - Endpoint URLs
+  - Authentication method
+  - Request parameters
+  - Response examples
+  - Rate limits
+  - Error handling
+- Documentation files should be placed under `/docs`.
+- Never leave API integrations undocumented.
+- If an API behavior changes, update the existing documentation in the same commit.

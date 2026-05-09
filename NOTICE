@@ -1,0 +1,13 @@
+people_relation
+
+Copyright 2026 the people_relation contributors
+
+Data Source Notice
+
+This project analyzes publicly available Wikipedia pages and generates independent statistical relationship data.
+
+The system does not store or redistribute Wikipedia article contents themselves.
+Only independently calculated metadata and relationship scores are stored.
+
+Wikipedia® is a registered trademark of the Wikimedia Foundation.
+This project is not affiliated with or endorsed by the Wikimedia Foundation.
