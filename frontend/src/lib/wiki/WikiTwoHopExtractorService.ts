@@ -15,6 +15,70 @@ import type { WikiApiClient } from "./WikiApiClient";
 export class WikiTwoHopExtractorService {
   constructor(private readonly wiki: WikiApiClient) {}
 
+  /**
+   * 転送・別表記で同一記事になった行を1つにまとめ、正規記事タイトルで再度人物判定する。
+   * （保存時の `normalized_person_in` と表示を一致させ、同一人物の二重表示を防ぐ）
+   */
+  private async collapseRelationsByCanonicalArticle(rows: RelationView[]): Promise<RelationView[]> {
+    const withPage = rows.filter((r) => r.hasWikiPage && r.slave.url);
+    const rest = rows.filter((r) => !r.hasWikiPage || !r.slave.url);
+    if (withPage.length === 0) return rows;
+
+    const slaveTitles = withPage.map((r) => String(r.slave.title ?? r.slave.name ?? "").trim()).filter(Boolean);
+    const resolved = await this.wiki.resolveCanonicalTitlesForTitles(slaveTitles);
+
+    const urlForCanon = (canon: string): string => {
+      const c = canon.trim();
+      return `https://ja.wikipedia.org/wiki/${encodeURIComponent(c.replace(/ /g, "_"))}`;
+    };
+
+    const merged = new Map<string, RelationView>();
+    for (const r of withPage) {
+      const slaveKey = String(r.slave.title ?? r.slave.name ?? "").trim();
+      const canon = resolved.get(slaveKey) ?? slaveKey;
+      const key = urlForCanon(canon);
+      const prev = merged.get(key);
+      if (!prev) {
+        merged.set(key, {
+          slave: { name: canon, title: canon, url: key },
+          forwardPoint: r.forwardPoint,
+          reversePoint: r.reversePoint,
+          totalPoint: r.forwardPoint + r.reversePoint,
+          hasWikiPage: true,
+        });
+      } else {
+        prev.forwardPoint += r.forwardPoint;
+        prev.reversePoint = Math.max(prev.reversePoint, r.reversePoint);
+        prev.totalPoint = prev.forwardPoint + prev.reversePoint;
+      }
+    }
+
+    const list = [...merged.values()];
+    const ok = new Set<string>();
+    const batchSize = 5;
+    for (let i = 0; i < list.length; i += batchSize) {
+      const batch = list.slice(i, i + batchSize);
+      const results = await Promise.all(
+        batch.map(async (r) => {
+          const tit = String(r.slave.title ?? r.slave.name ?? "").trim();
+          try {
+            const x = await apiWikiIsHuman(tit);
+            return { title: tit, ok: x.source !== "unknown" && x.is_human };
+          } catch {
+            return { title: tit, ok: false };
+          }
+        })
+      );
+      for (const x of results) {
+        if (x.ok) ok.add(x.title);
+      }
+      await sleep(120);
+    }
+
+    const kept = list.filter((r) => ok.has(String(r.slave.title ?? r.slave.name ?? "").trim()));
+    return [...kept, ...rest];
+  }
+
   async extract(params: {
     masterTitle: string;
     masterName: string;
@@ -293,8 +357,9 @@ export class WikiTwoHopExtractorService {
       console.log("[wiki] reverse checked none", { masterTitle, totalCandidates: total });
     }
 
-    out.sort((a, b) => b.totalPoint - a.totalPoint);
-    return { master, relations: out.slice(0, maxRelated) };
+    const collapsed = await this.collapseRelationsByCanonicalArticle(out);
+    collapsed.sort((a, b) => b.totalPoint - a.totalPoint);
+    return { master, relations: collapsed.slice(0, maxRelated) };
   }
 }
 

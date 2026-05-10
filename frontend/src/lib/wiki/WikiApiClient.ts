@@ -336,6 +336,96 @@ export class WikiApiClient {
     return (first.title ?? title) as string;
   }
 
+  /**
+   * `action=query&redirects=1` の normalized / redirects を踏襲し、各入力タイトル→転送解決後の記事タイトルを返す。
+   * バックエンド `wiki_resolve.resolve_ja_wikipedia_titles_sync` と同じ考え方。
+   */
+  private parseResolutionChunk(chunk: string[], data: unknown): Map<string, string> {
+    const q = (data as { query?: unknown })?.query as Record<string, unknown> | undefined;
+    const rawNorm = q?.normalized;
+    const rawRed = q?.redirects;
+    const normalized = Array.isArray(rawNorm) ? rawNorm.filter((x): x is Record<string, string> => typeof x === "object") : [];
+    const redirects = Array.isArray(rawRed) ? rawRed.filter((x): x is Record<string, string> => typeof x === "object") : [];
+
+    const applyNormalizedSteps = (t: string): string => {
+      let cur = t;
+      for (let guard = 0; guard < 10; guard++) {
+        let nxt = cur;
+        for (const n of normalized) {
+          if (cur === (n.from ?? "")) {
+            nxt = String(n.to ?? cur);
+            break;
+          }
+        }
+        if (nxt === cur) break;
+        cur = nxt;
+      }
+      return cur;
+    };
+
+    const redMap: Record<string, string> = {};
+    for (const r of redirects) {
+      const f = r.from;
+      if (f) redMap[String(f)] = String(r.to ?? "");
+    }
+
+    const followRedirects = (t: string): string => {
+      let cur = t;
+      const seen = new Set<string>();
+      for (let guard = 0; guard < 30; guard++) {
+        const nxt = redMap[cur];
+        if (!nxt || seen.has(cur)) break;
+        seen.add(cur);
+        cur = nxt;
+      }
+      return cur;
+    };
+
+    const out = new Map<string, string>();
+    for (const orig of chunk) {
+      const s = String(orig ?? "").trim();
+      if (!s) continue;
+      let t = applyNormalizedSteps(s);
+      t = followRedirects(t);
+      out.set(orig, t);
+    }
+    return out;
+  }
+
+  /** 複数タイトルをチャンクで `redirects=1` 解決（入力キー→正規記事タイトル） */
+  async resolveCanonicalTitlesForTitles(titles: string[]): Promise<Map<string, string>> {
+    const uniq: string[] = [];
+    const seen = new Set<string>();
+    for (const t of titles) {
+      const s = String(t ?? "").trim();
+      if (!s || seen.has(s)) continue;
+      seen.add(s);
+      uniq.push(s);
+    }
+    const out = new Map<string, string>();
+    const chunkSize = 45;
+    for (let i = 0; i < uniq.length; i += chunkSize) {
+      const chunk = uniq.slice(i, i + chunkSize);
+      const params = new URLSearchParams({
+        action: "query",
+        format: "json",
+        titles: chunk.join("|"),
+        redirects: "1",
+        utf8: "1",
+        origin: "*",
+      });
+      const res = await this.fetcher.fetchExternalApiWithRetry(`${WIKI_API}?${params.toString()}`);
+      if (!res.ok) continue;
+      const json = await this.parseJsonOrThrow<unknown>(res, "resolveCanonicalTitlesForTitles");
+      const part = this.parseResolutionChunk(chunk, json);
+      for (const [k, v] of part) out.set(k, v);
+    }
+    for (const t of uniq) {
+      if (!out.has(t)) out.set(t, t);
+    }
+    return out;
+  }
+
   async fetchRedirectTitles(title: string): Promise<string[]> {
     const params = new URLSearchParams({
       action: "query",
