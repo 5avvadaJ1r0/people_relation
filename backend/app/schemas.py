@@ -10,7 +10,7 @@ class HumanCheck:
     title: str
     qid: str | None
     is_human: bool
-    source: str  # cache / live / unknown
+    source: str  # db_cache / cache / live / unknown
 
 
 class PersonIn(BaseModel):

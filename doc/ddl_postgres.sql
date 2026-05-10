@@ -8,6 +8,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 DROP TABLE IF EXISTS relation;
+DROP TABLE IF EXISTS wiki_human_cache;
 DROP TABLE IF EXISTS person;
 
 CREATE TABLE person (
@@ -31,6 +32,24 @@ CREATE TABLE relation (
   CONSTRAINT uq_relation_master_slave UNIQUE (master_person_id, slave_person_id)
 );
 
+-- Wikipedia / Wikidata の人物(P31=Q5)判定結果のキャッシュ。
+-- person とは独立に、人物以外（曖昧さ回避ページ・組織・作品など）も含めて URL 単位で結果を保持する。
+-- これにより「person テーブルには本当に人物として保存したい行だけを入れる」ことが保証できる。
+--
+-- アクセスパターンは「url 完全一致での 1 件 SELECT / UPSERT」のみ。
+-- url の UNIQUE 制約により B-tree インデックスが自動作成されるため、
+-- 件数が数千万件規模に膨らんでも O(log N) で引ける。追加インデックスは不要
+-- （重複インデックスは書き込みコストとサイズを増やすだけになる）。
+CREATE TABLE wiki_human_cache (
+  id BIGSERIAL PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  url VARCHAR(1000) NOT NULL UNIQUE,
+  qid VARCHAR(32) NULL,
+  is_human BOOLEAN NOT NULL,
+  created TIMESTAMP NOT NULL DEFAULT now(),
+  updated TIMESTAMP NOT NULL DEFAULT now()
+);
+
 -- person.name の部分一致検索 (search_persons) 用 GIN インデックス。
 CREATE INDEX idx_person_name_trgm ON person USING gin (name gin_trgm_ops);
 
@@ -44,4 +63,3 @@ CREATE INDEX idx_relation_master_point ON relation(master_person_id, point DESC,
 CREATE INDEX idx_relation_slave_master ON relation(slave_person_id, master_person_id);
 
 COMMIT;
-

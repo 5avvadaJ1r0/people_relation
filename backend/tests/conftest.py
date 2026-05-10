@@ -30,6 +30,7 @@ def client() -> Iterator[TestClient]:
 def _empty_db(client: TestClient) -> Iterator[None]:
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM relation"))
+        conn.execute(text("DELETE FROM wiki_human_cache"))
         conn.execute(text("DELETE FROM person"))
     yield
 

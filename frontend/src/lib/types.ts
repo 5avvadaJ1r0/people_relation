@@ -52,4 +52,3 @@ export type ApiWikiHuman = {
   is_human: boolean;
   source: string;
 };
-

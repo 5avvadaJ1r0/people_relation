@@ -1,3 +1,11 @@
+import wtf from "wtf_wikipedia";
+
+type WikiSectionLike = {
+  title: () => string;
+  parent: () => WikiSectionLike | null;
+  links: () => unknown;
+};
+
 const escapeRegExp = (s: string): string => {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
@@ -49,42 +57,54 @@ export const isNoiseWikiSectionFragment = (fragment: string): boolean => {
   return n === "脚注" || n === "外部リンク";
 };
 
-/** 脚注・外部リンクなど、参照・外部URLが集中する節を wikitext から除去（`[[...]]` カウントのノイズ低減） */
-export const stripNoiseWikiSectionsFromWikitext = (wikitext: string): string => {
-  let w = String(wikitext ?? "");
-  for (const name of ["脚注", "外部リンク"]) {
-    const esc = escapeRegExp(name);
-    // Navboxes のほか、キングレコード等の末尾テンプレ・カテゴリ直前まで（{{キングレコード}} 内の [[...]] を源とするカウントを防ぐ）
-    const re = new RegExp(
-      `\\n==\\s*${esc}\\s*==\\s*\\n[\\s\\S]*?(?=\\n==[^=]|\\n\\{\\{Navboxes|\\n\\n\\{\\{|\\n\\{\\{Normdaten|\\n\\{\\{DEFAULTSORT|\\n\\{\\{デフォルトソート|\\n\\[\\[Category:)`,
-      "i"
-    );
-    w = w.replace(re, "\n");
-  }
-  return w;
+const noiseWikiSectionTitle = (title: string): boolean => {
+  const n = normalizeWikiLinkTitle(title);
+  return n === "脚注" || n === "外部リンク";
 };
 
-export const countLinksFromWikitext = (wikitext: string): Map<string, { count: number; href: string }> => {
-  // [[タイトル]] / [[タイトル|表示]] / [[タイトル#節|表示]]
-  const re = /\[\[([^\]|#]+)(?:#([^\]|]+))?(?:\|[^\]]+)?\]\]/g;
-  const map = new Map<string, { count: number; href: string }>();
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(wikitext))) {
-    const target = (m[1] ?? "").trim();
-    const fragment = (m[2] ?? "").trim();
-    if (fragment && isNoiseWikiSectionFragment(fragment)) continue;
-    if (!target) continue;
-    // 特別ページ等（: を含む）を除外
-    if (target.includes(":")) continue;
-    // タイトルの揺れ（空白/アンダースコア/URLエンコードなど）で同一人物が重複しないよう正規化
-    const norm = normalizeWikiLinkTitle(target);
-    if (!norm) continue;
-    const href = `/wiki/${encodeURIComponent(norm.replace(/ /g, "_"))}`;
-    const prev = map.get(norm);
-    if (!prev) map.set(norm, { count: 1, href });
-    else prev.count += 1;
+const isNoiseWikiSection = (sec: WikiSectionLike): boolean => {
+  let cur: WikiSectionLike | null = sec;
+  while (cur) {
+    if (noiseWikiSectionTitle(cur.title())) return true;
+    cur = cur.parent();
   }
-  return map;
+  return false;
+};
+
+const sectionLinksFlat = (sec: WikiSectionLike): Array<{ page: () => string; anchor: () => string }> => {
+  const ls = sec.links();
+  if (!ls) return [];
+  const arr = Array.isArray(ls) ? ls : [ls];
+  return arr.filter(Boolean) as Array<{ page: () => string; anchor: () => string }>;
+};
+
+/** MediaWiki 構文を wtf_wikipedia でパースし、脚注・外部リンク節（およびその子見出し）以外の記事空間リンクを集計する */
+export const countLinksFromWikitext = (wikitext: string): Map<string, { count: number; href: string }> => {
+  const raw = String(wikitext ?? "");
+  try {
+    const doc = wtf(raw);
+    const map = new Map<string, { count: number; href: string }>();
+    for (const sec of doc.sections()) {
+      if (isNoiseWikiSection(sec)) continue;
+      for (const link of sectionLinksFlat(sec)) {
+        const target = String(link.page?.() ?? "").trim();
+        const anchor = String(link.anchor?.() ?? "").trim();
+        if (anchor && isNoiseWikiSectionFragment(anchor)) continue;
+        if (!target) continue;
+        if (target.includes(":")) continue;
+        const norm = normalizeWikiLinkTitle(target);
+        if (!norm) continue;
+        const href = `/wiki/${encodeURIComponent(norm.replace(/ /g, "_"))}`;
+        const prev = map.get(norm);
+        if (!prev) map.set(norm, { count: 1, href });
+        else prev.count += 1;
+      }
+    }
+    return map;
+  } catch (e) {
+    console.warn("[wiki] wtf_wikipedia parse failed, returning empty link map", e);
+    return new Map();
+  }
 };
 
 export const reverseLinkScoreFromWikitextAndParse = (

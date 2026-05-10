@@ -9,7 +9,6 @@ import {
   hrefToUrl,
   normalizeWikiLinkTitle,
   reverseLinkScoreFromWikitextAndParse,
-  stripNoiseWikiSectionsFromWikitext,
 } from "./wikiUtils";
 import type { WikiApiClient } from "./WikiApiClient";
 
@@ -47,7 +46,7 @@ export class WikiTwoHopExtractorService {
     const masterRedirects = await this.wiki.fetchRedirectTitles(canonicalTitle).catch(() => []);
     onProgress?.({ phase: "主体者情報解析処理中", done: 0, total: 1 });
     await yieldToUi();
-    const linkCounts = countLinksFromWikitext(stripNoiseWikiSectionsFromWikitext(wikitext));
+    const linkCounts = countLinksFromWikitext(wikitext);
 
     const text = extractText.replace(/\s+/g, " ").trim();
     const masterHtmlText = masterHtmlTextRaw.replace(/\s+/g, " ").trim();
@@ -133,8 +132,9 @@ export class WikiTwoHopExtractorService {
       .filter((x) => x.point > 0)
       .sort((a, b) => b.point - a.point);
 
-    const candidateLimit = Math.min(1200, Math.max(maxRelated * 50, 400));
-    const forwardKeep = Math.min(220, Math.max(maxRelated * 10, 80));
+    const candidateLimit = Math.min(2500, Math.max(maxRelated * 50, 400));
+    /** 人物判定後に逆方向計算へ渡す候補数。maxRelated だけ変えてもここが不足すると「関連者検索」の total が頭打ちになる */
+    const forwardKeep = Math.min(1500, Math.max(maxRelated * 12, Math.max(120, maxRelated + 40)));
     const ranked = rankedAll.slice(0, candidateLimit);
 
     const noHref = ranked.filter((r) => !r.href).slice(0, 40);
@@ -165,7 +165,8 @@ export class WikiTwoHopExtractorService {
       }
     }
 
-    const HUMAN_CHECK_LIMIT = 160;
+    /** スコア順で人物判定 API にかける最大件数（maxRelated 増加時はここも広げないと候補が足りない） */
+    const HUMAN_CHECK_LIMIT = Math.min(2000, Math.max(350, maxRelated * 12));
     const HUMAN_CHECK_MIN_POINT = 1;
     const rankedWithHref = ranked
       .filter((r) => !!r.href && (r.point ?? 0) >= HUMAN_CHECK_MIN_POINT)
@@ -236,7 +237,7 @@ export class WikiTwoHopExtractorService {
               this.wiki.fetchExtractTextByTitle(slaveTitle).catch(() => ""),
               this.wiki.fetchParsePlainTextByTitle(slaveTitle).catch(() => ""),
             ]);
-            const slaveLinkCounts = countLinksFromWikitext(stripNoiseWikiSectionsFromWikitext(slaveWikitext));
+            const slaveLinkCounts = countLinksFromWikitext(slaveWikitext);
             const linkScore = reverseLinkScoreFromWikitextAndParse(
               slaveLinkCounts,
               parseLinkTitles,

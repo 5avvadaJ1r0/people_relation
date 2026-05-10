@@ -53,7 +53,10 @@ def save_relations_batch(
                         url=master.url,
                     ),
                     slave=PersonOut(
-                        id=slave.id, name=slave.name, title=slave.title, url=slave.url
+                        id=slave.id,
+                        name=slave.name,
+                        title=slave.title,
+                        url=slave.url,
                     ),
                     point=rel.point,
                 )

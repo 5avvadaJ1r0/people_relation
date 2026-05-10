@@ -1,16 +1,55 @@
 from __future__ import annotations
 
 from datetime import datetime
+from urllib.parse import quote
 
 from sqlalchemy import and_, delete, select
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
-from app.model import Person, Relation
+from app.model import Person, Relation, WikiHumanCache
 
 
 def normalize_url(url: str) -> str:
     return url.strip()
+
+
+def wiki_ja_article_url(title: str) -> str:
+    """フロントの `encodeURIComponent(title.replace(/ /g, '_'))` と同様の記事 URL。"""
+    segment = title.strip().replace(" ", "_")
+    return "https://ja.wikipedia.org/wiki/" + quote(segment, safe="-_.!~*'()")
+
+
+def get_wiki_human_cache(db: Session, *, url: str) -> WikiHumanCache | None:
+    """記事URL単位の人物判定キャッシュを返す（無ければ None）。"""
+    url_n = normalize_url(url)
+    return db.scalar(select(WikiHumanCache).where(WikiHumanCache.url == url_n))
+
+
+def upsert_wiki_human_cache(
+    db: Session,
+    *,
+    title: str,
+    url: str,
+    qid: str | None,
+    is_human: bool,
+) -> WikiHumanCache:
+    """記事URL単位の人物判定キャッシュを作成または更新する。
+
+    is_human=False のケースもここで保存する（人物以外として判定された URL も
+    キャッシュしたいため。person テーブルには触れない）。
+    """
+    url_n = normalize_url(url)
+    row = db.scalar(select(WikiHumanCache).where(WikiHumanCache.url == url_n))
+    if row is None:
+        row = WikiHumanCache(title=title, url=url_n, qid=qid, is_human=is_human)
+        db.add(row)
+    else:
+        row.title = title
+        row.qid = qid
+        row.is_human = is_human
+    db.flush()
+    return row
 
 
 def upsert_person(db: Session, *, name: str, url: str, title: str | None) -> Person:

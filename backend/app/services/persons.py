@@ -11,7 +11,11 @@ def search_persons(name: str) -> list[PersonSearchOut]:
         rows = crud.search_persons(db, name=name, limit=20)
         return [
             PersonSearchOut(
-                id=p.id, name=p.name, title=p.title, url=p.url, has_relations=has_rel
+                id=p.id,
+                name=p.name,
+                title=p.title,
+                url=p.url,
+                has_relations=has_rel,
             )
             for p, has_rel in rows
         ]

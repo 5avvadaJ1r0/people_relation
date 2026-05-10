@@ -14,6 +14,9 @@ type Selected = {
   serverPerson?: ApiPerson;
 };
 
+/** Wikipedia 経由で取得する関連者の最大件数（抽出パラメータと見出し表示で共通） */
+const WIKI_MAX_RELATED_DISPLAY = 100;
+
 const displayPersonNameFromWikiTitle = (title: string): string => {
   // Wikipedia検索のtitleには曖昧さ回避の補足が付くことがある（例: "山田太郎 (俳優)"）。
   // 表示は人物名のみ、選択/取得は元titleのままにする。
@@ -221,7 +224,7 @@ export const App = () => {
       const out = await wikiExtract.run({
         masterTitle: title,
         masterName,
-        maxRelated: 20,
+        maxRelated: WIKI_MAX_RELATED_DISPLAY,
       });
       if (!out) return;
       const { master, relations } = out;
@@ -392,7 +395,10 @@ export const App = () => {
         </div>
 
         <div className="card" ref={detailRef}>
-          <h2>❸ 主体者・関連者<span className="subtitle">（上位20名のみ表示）</span></h2>
+          <h2>
+            ❸ 主体者・関連者
+            <span className="subtitle">（上位{WIKI_MAX_RELATED_DISPLAY}名のみ表示）</span>
+          </h2>
           {selected ? (
             <div className="muted" style={{ marginBottom: 10, display: "flex", justifyContent: "space-between" }}>
               <span>
