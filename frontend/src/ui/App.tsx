@@ -74,6 +74,8 @@ export const App = () => {
   const [error, setError] = useState<string | null>(null);
   const detailRef = useRef<HTMLDivElement | null>(null);
   const queryInputRef = useRef<HTMLInputElement | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [wikiEmptyMessage, setWikiEmptyMessage] = useState<string | null>(null);
 
   const [wikiResults, setWikiResults] = useState<WikiSearchItem[]>([]);
   const [serverMatches, setServerMatches] = useState<ApiPerson[]>([]);
@@ -163,8 +165,10 @@ export const App = () => {
     setBusy(true);
     setError(null);
     resetDetail();
+    setHasSearched(true);
     setWikiResults([]);
     setServerMatches([]);
+    setWikiEmptyMessage(null);
     try {
       // どちらか片方が落ちても、片方の検索結果は表示する（特にサーバー停止時にWikipedia検索まで巻き添えで0件になるのを防ぐ）
       let wiki: WikiSearchItem[] = [];
@@ -189,13 +193,14 @@ export const App = () => {
         }
         // 人物判定が外部到達不可などで全滅するケースがあるため、0件なら未フィルタ結果を出す
         if (wikiHumans.length === 0) {
-          setWikiResults(wikiForFallback);
-          setError((prev) => prev ?? "人物判定に失敗したため、未判定の検索結果を表示しています。");
+          setWikiResults([]);
+          setWikiEmptyMessage("該当人物はいません");
         } else {
           setWikiResults(wikiHumans);
         }
       } else {
         setWikiResults([]);
+        setWikiEmptyMessage("該当人物はいません");
       }
 
       try {
@@ -417,7 +422,10 @@ export const App = () => {
                 </div>
               );
             })}
-            {wikiResults.length === 0 && <div className="subtitle">まだ検索していません。</div>}
+            {wikiResults.length === 0 && !hasSearched && <div className="subtitle">まだ検索していません。</div>}
+            {wikiResults.length === 0 && hasSearched && wikiEmptyMessage && (
+              <div className="subtitle">{wikiEmptyMessage}</div>
+            )}
           </div>
 
           {progress && !isSearchProgress && (

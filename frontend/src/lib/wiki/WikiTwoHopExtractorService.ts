@@ -108,6 +108,12 @@ export class WikiTwoHopExtractorService {
       if (norm) masterParseLinkNorms.add(norm);
     }
     const masterRedirects = await this.wiki.fetchRedirectTitles(canonicalTitle).catch(() => []);
+    /** 記事内は [[ひろゆき]] 等リダイレクト表記で同一人物へ張るため、主体の別名も前方スコアから除外する */
+    const masterLinkExcludeNorms = new Set<string>();
+    for (const s of [masterTitle, masterName, canonicalTitle, ...masterRedirects]) {
+      const n = normalizeWikiLinkTitle(s);
+      if (n) masterLinkExcludeNorms.add(n);
+    }
     onProgress?.({ phase: "主体者情報解析処理中", done: 0, total: 1 });
     await yieldToUi();
     const linkCounts = countLinksFromWikitext(wikitext);
@@ -177,9 +183,7 @@ export class WikiTwoHopExtractorService {
       if ((v.point ?? 0) <= 1 && !masterParseLinkNorms.has(name) && !v.href) scoreMap.delete(name);
     }
 
-    scoreMap.delete(masterName);
-    scoreMap.delete(masterTitle);
-    scoreMap.delete(canonicalTitle);
+    for (const n of masterLinkExcludeNorms) scoreMap.delete(n);
 
     const rankedAll = Array.from(scoreMap.entries())
       .map(([name, v]) => ({
@@ -359,7 +363,26 @@ export class WikiTwoHopExtractorService {
 
     const collapsed = await this.collapseRelationsByCanonicalArticle(out);
     collapsed.sort((a, b) => b.totalPoint - a.totalPoint);
-    return { master, relations: collapsed.slice(0, maxRelated) };
+    const withoutSelf = collapsed.filter((rel) => {
+      for (const raw of [rel.slave.name, rel.slave.title]) {
+        const n = normalizeWikiLinkTitle(String(raw ?? ""));
+        if (n && masterLinkExcludeNorms.has(n)) return false;
+      }
+      const u = String(rel.slave.url ?? "");
+      const ix = u.indexOf("/wiki/");
+      if (ix >= 0) {
+        const tail = u.slice(ix + "/wiki/".length);
+        try {
+          const n = normalizeWikiLinkTitle(decodeURIComponent(tail).replace(/_/g, " "));
+          if (n && masterLinkExcludeNorms.has(n)) return false;
+        } catch {
+          const n = normalizeWikiLinkTitle(tail.replace(/_/g, " "));
+          if (n && masterLinkExcludeNorms.has(n)) return false;
+        }
+      }
+      return true;
+    });
+    return { master, relations: withoutSelf.slice(0, maxRelated) };
   }
 }
 

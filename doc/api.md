@@ -603,6 +603,7 @@ sequenceDiagram
 - **外部API（Wikipedia）**: `action=query`（extracts/info/redirects）と `action=parse`（text/wikitext。ns0 リンクは `prop=links` ではなくノイズ節除去後の HTML から抽出）
 - **補足**: Wikipedia/Wikidataへの過剰連打を避けるため、フロント側で **最小間隔（既定150ms）+ 429/503/504時リトライ** を行う（`ExternalApiFetcher`）。
 - **人物判定**: 候補の一部はバックエンド `GET /api/v1/wiki/is_human` を呼び出して判定（**Postgres `wiki_human_cache` → Redis** の順で参照し、DB にもキャッシュする）。
+- **主体者本人の除外**: 本文では `[[ひろゆき]]` のように **正規記事タイトル以外のリダイレクト表記**で自分へリンクすることがある。前方スコアから主体の `canonicalTitle`・`masterTitle` に加え、`action=query&prop=redirects` で得た **当該記事へのリダイレクト元タイトル一覧**も同一人物として共起カウント対象から除外し、集約後の関連者リストでも名前・URL がその別名に一致する行を落とす。
 - **「脚注」「外部リンク」節・カテゴリ・navbox の除外**: 抽出・共起カウント・hatnote 用リンク集合のノイズを減らすため、`action=parse` の HTML から `**<section aria-labelledby="脚注">` / `<section aria-labelledby="外部リンク">`（実ページ相当）**、および `**h2#脚注` / `h2#外部リンク` の見出しブロックから次の `mw-heading2` または最初の `navbox` / パーサレポート手前**までを除去する。続けて `**class` にトークン `navbox` を含む `<div>` / `<table>`**（`navbox-inner` のみのクラスは対象外）をネスト対応ですべて除去し、`**{{キングレコード}}` 等のナビゲーションに由来する同僚歌手リンク**を参照対象から外す。`**id="catlinks"`（カテゴリ表示ブロック）はネストした `<div>` ごと除去する（API レスポンスに含まれる場合のみ）。本文中の `[[記事名#脚注|…]]` / `[[記事名#外部リンク|…]]` および `href="/wiki/記事名#脚注"` 形式の節リンクは、当該記事の脚注・外部リンクブロックへのジャンプであることが多いため、wikitext の `[[...]]` カウントおよびノイズ除去後 HTML からの ns0 リンク抽出からも除外する。`prop=extracts` のプレーン本文は、`脚注` 見出し行から次のよくある見出し（注釈・出典・参考文献・外部リンク等）の直前まで**、および末尾の `**外部リンク` 見出し行以降**を除去する。wikitext の `[[...]]` カウントでは、`== 脚注 ==` / `== 外部リンク ==` から **次のレベル2見出し**、または `**{{Navboxes`** / **空行のあとの `{{`**（`\n\n{{`）、`**{{Normdaten}}**`、`**[[Category:**` 等の直前までを除去する。
 
 #### C-1) 主体者ページ取得（並列）
@@ -708,6 +709,7 @@ sequenceDiagram
 
 ## 変更履歴
 
+- 2026-05-10: 2-hop 関連者抽出で、主体記事へのリダイレクト別名（例: `[[ひろゆき]]` → 西村博之）を前方スコア・結果リストから除外し、本人が関連者に載らないようにした。
 - 2026-05-10: `POST /api/v1/relation` で `ja.wikipedia.org` の記事 URL を転送解決し、`person` は正規記事 URL のみ upsert（転送ページ専用の人物行を作らない）。
 - 2026-05-10: `PersonOut` / `PersonSearchOut` に `executed_as_master_at`（主体者として関係保存を実行した日時、`person.executed_as_master_at`）を追加。`POST /api/v1/relation` のレスポンス内の人物オブジェクトにも含める。
 - 2026-05-10: `person` から `qid` / `wikidata_is_human` を廃止し、人物判定のキャッシュを新テーブル `wiki_human_cache` に分離。`PersonOut` / `PersonSearchOut` から `qid` を削除。`GET /api/v1/wiki/is_human` の DB 命中時 `source` を `person_db` → `db_cache` に変更（`person` テーブルへ判定の副作用で行を作らないようにし、人物以外を `person` に登録する事故を防止）
