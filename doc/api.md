@@ -201,6 +201,8 @@ sequenceDiagram
 - **用途**: 関係（主体者→関連者）の point を保存（人物/関係ともに upsert）
 - **Content-Type**: `application/json`
 
+- **転送記事（リダイレクト）**: `master` / `slave` の `url` が `https://ja.wikipedia.org/wiki/...` のとき、保存前に MediaWiki API（`action=query&redirects=1`）で正規記事タイトルへ解決し、`person.url` / `person.title` は**転送先の 1 記事**に統一する。転送元→転送先に解決した場合は `person.name`（表示名）も正規タイトルに揃え、リンク元の別名だけが残る事象を防ぐ。転送元タイトル専用の `person` 行は作成しない（同一人物は正規 URL で upsert）。`ja.wikipedia.org` 以外の URL（開発用ダミー等）は従来どおりそのまま保存する。
+
 #### クエリパラメータ
 
 - `**executed_master_url`**（任意）: フロントが Wikipedia 抽出の「主体者」の URL を渡す。値が一致する **person が既に DB にいるときのみ**、保存ループの前に次を実行する。
@@ -706,6 +708,7 @@ sequenceDiagram
 
 ## 変更履歴
 
+- 2026-05-10: `POST /api/v1/relation` で `ja.wikipedia.org` の記事 URL を転送解決し、`person` は正規記事 URL のみ upsert（転送ページ専用の人物行を作らない）。
 - 2026-05-10: `PersonOut` / `PersonSearchOut` に `executed_as_master_at`（主体者として関係保存を実行した日時、`person.executed_as_master_at`）を追加。`POST /api/v1/relation` のレスポンス内の人物オブジェクトにも含める。
 - 2026-05-10: `person` から `qid` / `wikidata_is_human` を廃止し、人物判定のキャッシュを新テーブル `wiki_human_cache` に分離。`PersonOut` / `PersonSearchOut` から `qid` を削除。`GET /api/v1/wiki/is_human` の DB 命中時 `source` を `person_db` → `db_cache` に変更（`person` テーブルへ判定の副作用で行を作らないようにし、人物以外を `person` に登録する事故を防止）
 - 2026-05-09: `POST /api/v1/relation` で `executed_master_url` 指定時、保存前に当該主体の forward と関連 reverse を削除してから upsert（同一主体で Wikipedia 再実行したときの旧関連を残さない）

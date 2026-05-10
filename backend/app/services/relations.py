@@ -6,6 +6,11 @@ from app import crud
 from app.db import SessionLocal
 from app.model import Person, Relation
 from app.schemas import PersonOut, RelationIn, RelationOut
+from app.services.wiki_resolve import (
+    normalized_person_in,
+    resolve_ja_wikipedia_titles_sync,
+    title_from_ja_wikipedia_url,
+)
 
 
 def save_relations_batch(
@@ -13,11 +18,32 @@ def save_relations_batch(
     *,
     executed_master_url: str | None,
 ) -> list[RelationOut]:
+    titles_to_resolve: list[str] = []
+    if executed_master_url:
+        et = title_from_ja_wikipedia_url(executed_master_url)
+        if et:
+            titles_to_resolve.append(et)
+    for item in payload:
+        for pin in (item.master, item.slave):
+            fu = title_from_ja_wikipedia_url(pin.url)
+            if fu:
+                titles_to_resolve.append(fu)
+    resolved_titles = resolve_ja_wikipedia_titles_sync(titles_to_resolve)
+
+    executed_norm: str | None = None
+    if executed_master_url:
+        et = title_from_ja_wikipedia_url(executed_master_url)
+        if et:
+            canon_et = resolved_titles.get(et, et)
+            executed_norm = crud.wiki_ja_article_url(canon_et)
+        else:
+            executed_norm = crud.normalize_url(executed_master_url)
+
     db = SessionLocal()
     try:
         out: list[RelationOut] = []
-        if executed_master_url:
-            url_n = crud.normalize_url(executed_master_url)
+        if executed_norm:
+            url_n = crud.normalize_url(executed_norm)
             mp = db.scalar(select(Person).where(Person.url == url_n))
             if mp is not None:
                 prev_slave_ids = list(
@@ -35,12 +61,10 @@ def save_relations_batch(
                 )
 
         for item in payload:
-            master = crud.upsert_person(
-                db, name=item.master.name, url=item.master.url, title=item.master.title
-            )
-            slave = crud.upsert_person(
-                db, name=item.slave.name, url=item.slave.url, title=item.slave.title
-            )
+            mn, mu, mtit = normalized_person_in(item.master, resolved_titles)
+            sn, su, stit = normalized_person_in(item.slave, resolved_titles)
+            master = crud.upsert_person(db, name=mn, url=mu, title=mtit)
+            slave = crud.upsert_person(db, name=sn, url=su, title=stit)
             rel = crud.upsert_relation(
                 db, master_id=master.id, slave_id=slave.id, point=item.point
             )
@@ -67,8 +91,8 @@ def save_relations_batch(
         # 逆向き(slave->master)も一緒に保存しているため、今回の「主体者」を明示的に渡してもらい
         # その人物のみ「主体者として実行済み」フラグを立てる。
         marked: Person | None = None
-        if executed_master_url:
-            marked = crud.mark_executed_as_master_by_url(db, url=executed_master_url)
+        if executed_norm:
+            marked = crud.mark_executed_as_master_by_url(db, url=executed_norm)
         db.commit()
         if marked is not None:
             out = [
