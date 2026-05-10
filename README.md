@@ -1,14 +1,14 @@
-# 著名人関連者リストアップシステム
+# 著名人関連者リストアップ
 
 ## インフラ構成
 - frontend
   - ReactJS
 
-- Backend （自サーバー）
-  - nginx (docker仮想環境)
-  - FastAPI (docker仮想環境)
-  - PostgreSQL (docker仮想環境)
-  - Redis (docker仮想環境)
+- Backend
+  - nginx
+  - FastAPI
+  - PostgreSQL
+  - Redis
 
 ## 起動方法（開発）
 
