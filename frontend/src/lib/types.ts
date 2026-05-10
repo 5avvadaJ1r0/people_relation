@@ -30,17 +30,42 @@ export type ApiPerson = {
   title: string;
   url: string;
   has_relations: boolean;
+  executed_as_master_at?: string | null;
 };
 
 export type ApiRelation = {
-  master: { id: number; name: string; title: string; url: string };
-  slave: { id: number; name: string; title: string; url: string };
+  master: {
+    id: number;
+    name: string;
+    title: string;
+    url: string;
+    executed_as_master_at?: string | null;
+  };
+  slave: {
+    id: number;
+    name: string;
+    title: string;
+    url: string;
+    executed_as_master_at?: string | null;
+  };
   point: number;
 };
 
 export type ApiRelationAggregate = {
-  master: { id: number; name: string; title: string; url: string };
-  slave: { id: number; name: string; title: string; url: string };
+  master: {
+    id: number;
+    name: string;
+    title: string;
+    url: string;
+    executed_as_master_at?: string | null;
+  };
+  slave: {
+    id: number;
+    name: string;
+    title: string;
+    url: string;
+    executed_as_master_at?: string | null;
+  };
   forward_point: number;
   reverse_point: number;
   total_point: number;

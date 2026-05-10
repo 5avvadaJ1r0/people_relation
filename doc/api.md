@@ -93,6 +93,7 @@ FastAPI標準のエラー応答を返します。
 | name  | string  | yes   | 人物名                                     |
 | title | string  | yes   | Wikipedia上のページ表示名                        |
 | url   | string  | yes   | WikipediaページURL                         |
+| executed_as_master_at | string (ISO 8601) | null可 | 主体者として関係保存を実行した日時（`person.executed_as_master_at`）。未実行なら null |
 
 
 ### RelationOut
@@ -127,6 +128,7 @@ FastAPI標準のエラー応答を返します。
 | title         | string  | yes | 表示名             |
 | url           | string  | yes | WikipediaページURL |
 | has_relations | boolean | yes | 関係データが1件以上あるか   |
+| executed_as_master_at | string (ISO 8601) | null可 | 主体者として実行済みの日時（未実行なら null） |
 
 
 ### WikiHuman
@@ -216,12 +218,12 @@ sequenceDiagram
 [
   {
     "master": {
-      "name": "木村拓哉",
+      "name": "AAA",
       "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
       "title": "木村 拓哉"
     },
     "slave": {
-      "name": "中居正広",
+      "name": "BBB",
       "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83",
       "title": "中居 正広"
     },
@@ -237,8 +239,8 @@ sequenceDiagram
 ```json
 [
   {
-    "master": { "id": 1, "name": "木村拓哉", "title": "木村 拓哉", "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89" },
-    "slave": { "id": 2, "name": "中居正広", "title": "中居 正広", "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83" },
+    "master": { "id": 1, "name": "AAA", "title": "木村 拓哉", "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89" },
+    "slave": { "id": 2, "name": "BBB", "title": "中居 正広", "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83" },
     "point": 10
   }
 ]
@@ -313,7 +315,7 @@ sequenceDiagram
 [
   {
     "id": 1,
-    "name": "木村拓哉",
+    "name": "AAA",
     "title": "木村 拓哉",
     "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
     "has_relations": true
@@ -359,8 +361,8 @@ sequenceDiagram
 ```json
 [
   {
-    "master": { "id": 1, "name": "木村拓哉", "title": "木村 拓哉", "url": "..." },
-    "slave": { "id": 2, "name": "中居正広", "title": "中居 正広", "url": "..." },
+    "master": { "id": 1, "name": "AAA", "title": "木村 拓哉", "url": "..." },
+    "slave": { "id": 2, "name": "BBB", "title": "中居 正広", "url": "..." },
     "point": 10
   }
 ]
@@ -410,8 +412,8 @@ sequenceDiagram
 ```json
 [
   {
-    "master": { "id": 1, "name": "木村拓哉", "title": "木村 拓哉", "url": "..." },
-    "slave": { "id": 2, "name": "中居正広", "title": "中居 正広", "url": "..." },
+    "master": { "id": 1, "name": "AAA", "title": "木村 拓哉", "url": "..." },
+    "slave": { "id": 2, "name": "BBB", "title": "中居 正広", "url": "..." },
     "forward_point": 10,
     "reverse_point": 8,
     "total_point": 18
@@ -525,7 +527,7 @@ sequenceDiagram
 
 ```json
 {
-  "title": "木村拓哉",
+  "title": "AAA",
   "qid": "Q12345",
   "is_human": true,
   "source": "person_db"
@@ -704,6 +706,7 @@ sequenceDiagram
 
 ## 変更履歴
 
+- 2026-05-10: `PersonOut` / `PersonSearchOut` に `executed_as_master_at`（主体者として関係保存を実行した日時、`person.executed_as_master_at`）を追加。`POST /api/v1/relation` のレスポンス内の人物オブジェクトにも含める。
 - 2026-05-10: `person` から `qid` / `wikidata_is_human` を廃止し、人物判定のキャッシュを新テーブル `wiki_human_cache` に分離。`PersonOut` / `PersonSearchOut` から `qid` を削除。`GET /api/v1/wiki/is_human` の DB 命中時 `source` を `person_db` → `db_cache` に変更（`person` テーブルへ判定の副作用で行を作らないようにし、人物以外を `person` に登録する事故を防止）
 - 2026-05-09: `POST /api/v1/relation` で `executed_master_url` 指定時、保存前に当該主体の forward と関連 reverse を削除してから upsert（同一主体で Wikipedia 再実行したときの旧関連を残さない）
 - 2026-05-09: parse HTML から `class` に `navbox` を含むブロックを除去（外部リンク直下のレーベルnavboxに含まれる名前リンクの混入防止）。wikitext は外部リンク節の終端境界を `{{Navboxes` 以外（`\n\n{{`・Normdaten・Category 等）にも拡張

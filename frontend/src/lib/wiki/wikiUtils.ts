@@ -144,7 +144,7 @@ export const dropSubNameIfFullExists = (
       const subMeta = scoreMap.get(sub);
       const fullMeta = scoreMap.get(full);
 
-      // 例外: sub が full の「先頭一致で末尾1〜2文字欠け」(木村拓 vs 木村拓哉) のような短縮形なら、
+      // 例外: sub が full の「先頭一致で末尾1〜2文字欠け」(木村拓 vs AAA) のような短縮形なら、
       // sub が href を持っていてもノイズになりやすいので落とす。
       const isNearPrefix = full.startsWith(sub) && full.length > sub.length && full.length - sub.length <= 2;
       if (isNearPrefix) {

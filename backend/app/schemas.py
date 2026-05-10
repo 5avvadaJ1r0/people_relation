@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -30,6 +32,7 @@ class PersonOut(BaseModel):
     name: str
     title: str
     url: str
+    executed_as_master_at: datetime | None = None
 
 
 class RelationOut(BaseModel):
@@ -52,3 +55,4 @@ class PersonSearchOut(BaseModel):
     title: str
     url: str
     has_relations: bool
+    executed_as_master_at: datetime | None = None

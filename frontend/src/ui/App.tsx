@@ -17,6 +17,18 @@ type Selected = {
 /** Wikipedia 経由で取得する関連者の最大件数（抽出パラメータと見出し表示で共通） */
 const WIKI_MAX_RELATED_DISPLAY = 100;
 
+const formatExecutedAsMasterAt = (iso: string | null | undefined): string | null => {
+  if (iso == null || iso === "") return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const mo = d.getMonth() + 1;
+  const day = d.getDate();
+  const h = d.getHours();
+  const min = d.getMinutes();
+  return `${y}年${mo}月${day}日 ${h}時${min}分`;
+};
+
 const displayPersonNameFromWikiTitle = (title: string): string => {
   // Wikipedia検索のtitleには曖昧さ回避の補足が付くことがある（例: "山田太郎 (俳優)"）。
   // 表示は人物名のみ、選択/取得は元titleのままにする。
@@ -88,6 +100,22 @@ export const App = () => {
   const [masterLabel, setMasterLabel] = useState<string>("");
   const [relations, setRelations] = useState<RelationView[]>([]);
   const [source, setSource] = useState<"server" | "wikipedia" | "">("");
+  const [masterExecutedAt, setMasterExecutedAt] = useState<string | null>(null);
+  const masterExecutedAtLabel = useMemo(
+    () => formatExecutedAsMasterAt(masterExecutedAt),
+    [masterExecutedAt]
+  );
+
+  const [excludeZeroReverse, setExcludeZeroReverse] = useState(true);
+
+  const displayRelations = useMemo(() => {
+    let rows = relations;
+    if (excludeZeroReverse) {
+      rows = rows.filter((r) => r.reversePoint !== 0);
+    }
+    const sorted = [...rows].sort((a, b) => b.totalPoint - a.totalPoint);
+    return sorted.slice(0, WIKI_MAX_RELATED_DISPLAY);
+  }, [relations, excludeZeroReverse]);
 
   // Hook側の progress/error を App の表示に反映（既存UIを維持）
   useEffect(() => {
@@ -124,6 +152,8 @@ export const App = () => {
     setRelations([]);
     setSource("");
     setMasterLabel("");
+    setMasterExecutedAt(null);
+    setExcludeZeroReverse(true);
     setProgress(null);
     setError(null);
     wikiExtract.reset();
@@ -198,6 +228,7 @@ export const App = () => {
       const rels = await apiGetRelationsAggregate(p.id);
       setMasterLabel(p.title);
       setSource("server");
+      setMasterExecutedAt(p.executed_as_master_at ?? null);
       setRelations(
         rels.map((r) => ({
           slave: { name: r.slave.name, title: r.slave.title, url: r.slave.url },
@@ -260,7 +291,12 @@ export const App = () => {
       }
       const payload = Array.from(agg.values());
       setProgress({ phase: "キャッシュ保存", done: 0, total: 1 });
-      await apiPostRelations(payload, master.url);
+      const posted = await apiPostRelations(payload, master.url);
+      const executedAt =
+        posted.find((x) => x.master.url === master.url)?.master.executed_as_master_at ??
+        posted[0]?.master.executed_as_master_at ??
+        null;
+      setMasterExecutedAt(executedAt ?? null);
       setProgress({ phase: "キャッシュ保存", done: 1, total: 1 });
     } catch (e: any) {
       setError(e?.message ?? String(e));
@@ -274,6 +310,8 @@ export const App = () => {
     setRelations([]);
     setSource("");
     setMasterLabel("");
+    setMasterExecutedAt(null);
+    setExcludeZeroReverse(true);
     setError(null);
     const m = findServerMatchByTitle(item.title);
     const sel: Selected = { wiki: item, serverPerson: m };
@@ -311,7 +349,7 @@ export const App = () => {
                 name="query"
                 type="text"
                 value={query}
-                placeholder="例: 木村拓哉"
+                placeholder="著名人の氏名を入力してください"
                 className={query.trim().length > 0 ? "hasRightIcon" : ""}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -397,17 +435,38 @@ export const App = () => {
         <div className="card" ref={detailRef}>
           <h2>
             ❸ 主体者・関連者
-            <span className="subtitle">（上位{WIKI_MAX_RELATED_DISPLAY}名のみ表示）</span>
+            <span className="subtitle">（最大上位{WIKI_MAX_RELATED_DISPLAY}名のみ表示）</span>
           </h2>
           {selected ? (
-            <div className="muted" style={{ marginBottom: 10, display: "flex", justifyContent: "space-between" }}>
-              <span>
-                主体者: <span className="pill">{masterLabel || selected.wiki.title}</span>
-              </span>
-              <span>
-                表示元:{" "}
-                <span className="pill">{source === "server" ? "キャッシュ" : source === "wikipedia" ? "最新版" : "-"}</span>
-              </span>
+            <div className="detailMeta">
+              <div className="detailMetaItem detailMetaItemMaster">
+                <span className="detailMetaLabel">主体者</span>
+                <div className="detailMetaMasterMain">
+                  <span className="pill">{masterLabel || selected.wiki.title}</span>
+                  <label className="detailMetaCheckboxLabel">
+                    <input
+                      type="checkbox"
+                      checked={excludeZeroReverse}
+                      onChange={(e) => setExcludeZeroReverse(e.target.checked)}
+                    />
+                    <span>関連値0は除外</span>
+                  </label>
+                </div>
+              </div>
+              <div className="detailMetaGroup">
+                <div className="detailMetaItem">
+                  <span className="detailMetaLabel">表示元</span>
+                  <span className="pill">
+                    {source === "server" ? "キャッシュ" : source === "wikipedia" ? "最新版" : "-"}
+                  </span>
+                </div>
+                {masterExecutedAtLabel && (
+                  <div className="detailMetaItem">
+                    <span className="detailMetaLabel">最終更新</span>
+                    <span className="pill">{masterExecutedAtLabel}</span>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="subtitle" style={{ marginBottom: 10 }}>
@@ -415,7 +474,7 @@ export const App = () => {
             </div>
           )}
 
-          {relations.length > 0 ? (
+          {relations.length > 0 && displayRelations.length > 0 ? (
             <table className="table">
               <thead>
                 <tr>
@@ -426,8 +485,8 @@ export const App = () => {
                 </tr>
               </thead>
               <tbody>
-                {relations.map((r) => (
-                  <tr key={`${r.slave.title ?? r.slave.name}-${r.totalPoint}`}>
+                {displayRelations.map((r) => (
+                  <tr key={`${r.slave.url}-${r.totalPoint}-${r.forwardPoint}`}>
                     <td>
                       <a href={r.slave.url} target="_blank" rel="noreferrer">
                         {r.slave.name}
@@ -442,6 +501,8 @@ export const App = () => {
                 ))}
               </tbody>
             </table>
+          ) : relations.length > 0 ? (
+            <div className="subtitle">関連値0は除外のため、表示できる関連者がありません。チェックを外すと一覧できます。</div>
           ) : (
             <div className="subtitle">結果はまだありません</div>
           )}

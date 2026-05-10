@@ -51,12 +51,14 @@ def save_relations_batch(
                         name=master.name,
                         title=master.title,
                         url=master.url,
+                        executed_as_master_at=master.executed_as_master_at,
                     ),
                     slave=PersonOut(
                         id=slave.id,
                         name=slave.name,
                         title=slave.title,
                         url=slave.url,
+                        executed_as_master_at=slave.executed_as_master_at,
                     ),
                     point=rel.point,
                 )
@@ -64,9 +66,35 @@ def save_relations_batch(
 
         # 逆向き(slave->master)も一緒に保存しているため、今回の「主体者」を明示的に渡してもらい
         # その人物のみ「主体者として実行済み」フラグを立てる。
+        marked: Person | None = None
         if executed_master_url:
-            crud.mark_executed_as_master_by_url(db, url=executed_master_url)
+            marked = crud.mark_executed_as_master_by_url(db, url=executed_master_url)
         db.commit()
+        if marked is not None:
+            out = [
+                RelationOut(
+                    master=PersonOut(
+                        id=r.master.id,
+                        name=r.master.name,
+                        title=r.master.title,
+                        url=r.master.url,
+                        executed_as_master_at=(
+                            marked.executed_as_master_at
+                            if r.master.id == marked.id
+                            else r.master.executed_as_master_at
+                        ),
+                    ),
+                    slave=PersonOut(
+                        id=r.slave.id,
+                        name=r.slave.name,
+                        title=r.slave.title,
+                        url=r.slave.url,
+                        executed_as_master_at=r.slave.executed_as_master_at,
+                    ),
+                    point=r.point,
+                )
+                for r in out
+            ]
         return out
     except Exception:
         db.rollback()

@@ -74,7 +74,7 @@ API と画面のオリジンが分かれるときは、バックエンドの `CO
 - カウントした値をpointとする
 - 推察された人物のページがある場合はその人物のページも参照し同様に人物名と推察される固有名詞を人物ごとにカウントする。
 
-（例）「木村拓哉」と入力した場合
+（例）「AAA」と入力した場合
 
 1. Wikipediaの検索結果を表示（名前に一致する人物ページのタイトルのリスト）
 2. リストから選択するとその人物ページ中に出現する人物名と出現回数(point) 抽出する
@@ -82,54 +82,54 @@ https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89
 
 |主体者|関連者|point|
 |-|-|-|
-|木村拓哉|中居正広|10|
-|木村拓哉|草彅剛|8|
-|木村拓哉|香取慎吾|7|
-|木村拓哉|工藤静香|6|
-|木村拓哉|稲垣吾郎|6|
-|木村拓哉|...|...|
+|AAA|BBB|10|
+|AAA|CCC|8|
+|AAA|DDD|7|
+|AAA|EEE|6|
+|AAA|FFF|6|
+|AAA|...|...|
 
 
 3. 次に上記の「関連者」にWikipediaの人物ページが存在する場合（文中のアンカーで判定）同様に人物名と出現回数(point) 抽出する
 
-- 中居正広 https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83
+- BBB https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83
 |主体者|関連者|point|
 |-|-|-|
-|中居正広|木村拓哉|8|
-|中居正広|...|...|
+|BBB|AAA|8|
+|BBB|...|...|
 
-- 草彅剛 https://ja.wikipedia.org/wiki/%E7%A8%B2%E5%9E%A3%E5%90%BE%E9%83%8E
+- CCC https://ja.wikipedia.org/wiki/%E7%A8%B2%E5%9E%A3%E5%90%BE%E9%83%8E
 |主体者|関連者|point|
 |-|-|-|
-|草彅剛|木村拓哉|7|
-|草彅剛|...|...|
+|CCC|AAA|7|
+|CCC|...|...|
 
-- 香取慎吾 https://ja.wikipedia.org/wiki/%E9%A6%99%E5%8F%96%E6%85%8E%E5%90%BE
+- DDD https://ja.wikipedia.org/wiki/%E9%A6%99%E5%8F%96%E6%85%8E%E5%90%BE
 |主体者|関連者|point|
 |-|-|-|
-|香取慎吾|木村拓哉|2|
-|香取慎吾|...|...|
+|DDD|AAA|2|
+|DDD|...|...|
 
-- 工藤静香 https://ja.wikipedia.org/wiki/%E5%B7%A5%E8%97%A4%E9%9D%99%E9%A6%99
+- EEE https://ja.wikipedia.org/wiki/%E5%B7%A5%E8%97%A4%E9%9D%99%E9%A6%99
 |主体者|関連者|point|
 |-|-|-|
-|工藤静香|木村拓哉|3|
-|工藤静香|...|...|
+|EEE|AAA|3|
+|EEE|...|...|
 
-- 稲垣吾郎 https://ja.wikipedia.org/wiki/%E7%A8%B2%E5%9E%A3%E5%90%BE%E9%83%8E
+- FFF https://ja.wikipedia.org/wiki/%E7%A8%B2%E5%9E%A3%E5%90%BE%E9%83%8E
 |主体者|関連者|point|
 |-|-|-|
-|稲垣吾郎|木村拓哉|1|
-|稲垣吾郎|...|...|
+|FFF|AAA|1|
+|FFF|...|...|
 
 4. 最終的には`point`を元に主体者に対し、pointが高い順に関連者を表示する。
 
 - 主体者
-  - 木村拓哉
+  - AAA
 
 - 関連者
-  - 中居正広 (主体者:木村拓哉 関連者:中居正広 のpoint + 主体者:中居正広 関連者:木村拓哉 のpoint = 18)
-  - 草彅剛 (主体者:木村拓哉 関連者:草彅剛 のpoint + 主体者:草彅剛 関連者:木村拓哉 のpoint = 15)
+  - BBB (主体者:AAA 関連者:BBB のpoint + 主体者:BBB 関連者:AAA のpoint = 18)
+  - CCC (主体者:AAA 関連者:CCC のpoint + 主体者:CCC 関連者:AAA のpoint = 15)
   - ...
 
 ## wikipediaからの抽出及びリストアップ処理はfrontendの処理で完結する
@@ -143,22 +143,22 @@ POST /api/v1/relation
 {
   [
      "master": {
-       "name": "木村拓哉",
+       "name": "AAA",
        "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
      },
      "slave": {
-       "name": "中居正広",
+       "name": "BBB",
        "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83",
      },
      "point": 10,
   ],
   [
      "master": {
-       "name": "中居正広",
+       "name": "BBB",
        "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83",
      },
      "slave": {
-       "name": "木村拓哉",
+       "name": "AAA",
        "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
      },
      "point": 8,

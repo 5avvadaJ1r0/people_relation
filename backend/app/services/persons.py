@@ -16,6 +16,7 @@ def search_persons(name: str) -> list[PersonSearchOut]:
                 title=p.title,
                 url=p.url,
                 has_relations=has_rel,
+                executed_as_master_at=p.executed_as_master_at,
             )
             for p, has_rel in rows
         ]
@@ -37,12 +38,14 @@ def list_person_relations(person_id: int) -> list[RelationOut] | None:
                     name=r.master_person.name,
                     title=r.master_person.title,
                     url=r.master_person.url,
+                    executed_as_master_at=r.master_person.executed_as_master_at,
                 ),
                 slave=PersonOut(
                     id=r.slave_person.id,
                     name=r.slave_person.name,
                     title=r.slave_person.title,
                     url=r.slave_person.url,
+                    executed_as_master_at=r.slave_person.executed_as_master_at,
                 ),
                 point=r.point,
             )
@@ -74,12 +77,14 @@ def list_person_relations_aggregate(
                         name=fwd.master_person.name,
                         title=fwd.master_person.title,
                         url=fwd.master_person.url,
+                        executed_as_master_at=fwd.master_person.executed_as_master_at,
                     ),
                     slave=PersonOut(
                         id=fwd.slave_person.id,
                         name=fwd.slave_person.name,
                         title=fwd.slave_person.title,
                         url=fwd.slave_person.url,
+                        executed_as_master_at=fwd.slave_person.executed_as_master_at,
                     ),
                     forward_point=fwd.point,
                     reverse_point=reverse_point,
