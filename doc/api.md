@@ -222,12 +222,12 @@ sequenceDiagram
     "master": {
       "name": "AAA",
       "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
-      "title": "木村 拓哉"
+      "title": "AAA BBB"
     },
     "slave": {
       "name": "BBB",
       "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83",
-      "title": "中居 正広"
+      "title": "CCC DDD"
     },
     "point": 10
   }
@@ -241,8 +241,8 @@ sequenceDiagram
 ```json
 [
   {
-    "master": { "id": 1, "name": "AAA", "title": "木村 拓哉", "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89" },
-    "slave": { "id": 2, "name": "BBB", "title": "中居 正広", "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83" },
+    "master": { "id": 1, "name": "AAA", "title": "AAA BBB", "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89" },
+    "slave": { "id": 2, "name": "BBB", "title": "CCC DDD", "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83" },
     "point": 10
   }
 ]
@@ -318,7 +318,7 @@ sequenceDiagram
   {
     "id": 1,
     "name": "AAA",
-    "title": "木村 拓哉",
+    "title": "AAA BBB",
     "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
     "has_relations": true
   }
@@ -363,8 +363,8 @@ sequenceDiagram
 ```json
 [
   {
-    "master": { "id": 1, "name": "AAA", "title": "木村 拓哉", "url": "..." },
-    "slave": { "id": 2, "name": "BBB", "title": "中居 正広", "url": "..." },
+    "master": { "id": 1, "name": "AAA", "title": "AAA BBB", "url": "..." },
+    "slave": { "id": 2, "name": "BBB", "title": "CCC DDD", "url": "..." },
     "point": 10
   }
 ]
@@ -414,8 +414,8 @@ sequenceDiagram
 ```json
 [
   {
-    "master": { "id": 1, "name": "AAA", "title": "木村 拓哉", "url": "..." },
-    "slave": { "id": 2, "name": "BBB", "title": "中居 正広", "url": "..." },
+    "master": { "id": 1, "name": "AAA", "title": "AAA BBB", "url": "..." },
+    "slave": { "id": 2, "name": "BBB", "title": "CCC DDD", "url": "..." },
     "forward_point": 10,
     "reverse_point": 8,
     "total_point": 18

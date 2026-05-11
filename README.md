@@ -2,7 +2,7 @@
 
 ## インフラ構成
 - frontend
-  - ReactJS
+  - React + TypeScript + Vite
 
 - Backend
   - nginx
@@ -29,7 +29,7 @@ docker compose -f docker/docker-compose.yml --env-file .env up --build
 ```
 
 - 画面: `http://localhost:8080`
-- APIヘルスチェック: `http://localhost:8080/api/health`
+- APIヘルスチェック: `http://localhost:8080/api/v1/health`（DB まで含めた起動確認は `http://localhost:8080/api/v1/ready`）
 
 停止:
 
@@ -64,15 +64,15 @@ gunicorn app.main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --workers
 
 ## フロントを CDN（別ホスト）で配信する場合
 
-API と画面のオリジンが分かれるときは、バックエンドの `CORS_ORIGINS` にユーザーが開くフロントの origin（例: `https://cdn.example.com`）を追加する。フロントのビルドでは `VITE_API_BASE_URL` に API のベース URL（例: `https://api.example.com/api`）を渡す。実行時にだけ URL を差し替えたい場合は `index.html` のコメント参照。詳細は `doc/api.md` の「CDN・別オリジンでフロントを配信する場合」。
+API と画面のオリジンが分かれるときは、バックエンドの `CORS_ORIGINS` にユーザーが開くフロントの origin（例: `https://cdn.example.com`）を追加する。フロントのビルドでは `VITE_API_BASE_URL` に API のベース URL（例: `https://api.example.com/api`）を渡す。実行時にだけ URL を差し替えたい場合は `index.html` のコメント参照。詳細は [`doc/api.md`](doc/api.md) の「CDN・別オリジンでフロントを配信する場合」。
 
 ## 人物名を入力するとWikipediaから該当する人物のページをリストアップする
-リストから選択した人物に関連する人物をリストアップする（日本語形態素解析を使用する）
+リストから選択した人物に関連する人物をリストアップする。フロントでは Wikipedia の wikitext・本文から内部リンクや表記の出現を数えてスコア化し、関連記事があれば最大2ホップまで同様に集計する。記事が人物かどうかはバックエンドの Wikidata 判定 API（結果は DB / Redis にキャッシュ）で補助する。
 
 ## 人物のリストアップのアルゴリズム
-- 人物のページに出現する人物名と推察される固有名詞を人物ごとにカウントする
-- カウントした値をpointとする
-- 推察された人物のページがある場合はその人物のページも参照し同様に人物名と推察される固有名詞を人物ごとにカウントする。
+- 人物のページの wikitext 上のリンクや、本文上の表記出現などを候補ごとにカウントする
+- カウントした値を point とする（逆向きの共起も関連記事側のページを参照して加算する場合がある）
+- 候補に Wikipedia の記事ページがある場合はそのページも参照し、同様にカウントする（2ホップまで）
 
 （例）「AAA」と入力した場合
 
@@ -132,89 +132,60 @@ https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89
   - CCC (主体者:AAA 関連者:CCC のpoint + 主体者:CCC 関連者:AAA のpoint = 15)
   - ...
 
-## wikipediaからの抽出及びリストアップ処理はfrontendの処理で完結する
+## Wikipedia からの抽出およびリストアップの計算は主にフロントで行う（人物判定はバックエンド API とキャッシュを利用）
 ## リストアップした結果は以下のフォーマットでサーバーAPIを実行してデータベースに保存する
 
-- API(Fast API)
+- API（FastAPI）: ボディは **JSON 配列**（`RelationIn[]`）。`master` / `slave` には `name` と `url` が必須、`title`（Wikipedia 表示名）は任意。再実行で主体の関係を置き換えるときはクエリ `executed_master_url` に主体の URL を付与する（詳細は [`doc/api.md`](doc/api.md)）。
 
-```
+```http
 POST /api/v1/relation
+Content-Type: application/json
+```
 
-{
-  [
-     "master": {
-       "name": "AAA",
-       "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
-     },
-     "slave": {
-       "name": "BBB",
-       "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83",
-     },
-     "point": 10,
-  ],
-  [
-     "master": {
-       "name": "BBB",
-       "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83",
-     },
-     "slave": {
-       "name": "AAA",
-       "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
-     },
-     "point": 8,
-  ],
-  ....
-}
-
-
+```json
+[
+  {
+    "master": {
+      "name": "AAA",
+      "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
+      "title": "AAA BBB"
+    },
+    "slave": {
+      "name": "BBB",
+      "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83",
+      "title": "CCC DDD"
+    },
+    "point": 10
+  },
+  {
+    "master": {
+      "name": "BBB",
+      "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83",
+      "title": "CCC DDD"
+    },
+    "slave": {
+      "name": "AAA",
+      "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
+      "title": "AAA BBB"
+    },
+    "point": 8
+  }
+]
 ```
 
 ## API（実装済み）
 
-- `GET /api/health`
-- `POST /api/v1/relation`（関係データの保存）
+エンドポイントの詳細・レート制限・エラー形式は [`doc/api.md`](doc/api.md) を参照。
+
+- `GET /api/v1/health`（プロセス生存確認）
+- `GET /api/v1/ready`（DB 接続確認）
+- `POST /api/v1/relation`（関係データの保存・upsert）
 - `GET /api/v1/person/search?name=...`（保存済み人物の検索）
 - `GET /api/v1/person/{person_id}/relations`（主体者の関連者を取得）
+- `GET /api/v1/person/{person_id}/relations_aggregate`（forward / reverse を集約した関連者一覧）
+- `GET /api/v1/wiki/is_human?title=...`（Wikidata による人物判定、キャッシュ利用）
 
-
-- データベースのテーブル（postgres）
-
-```sql
--- 人物テーブル
-create table person (
-    "id" bigserial NOT NULL,
-    "title" character varying(255) NOT NULL, -- 人物のWikipedia上のページの表示名
-    "name" character varying(255) NOT NULL, -- 人物名
-    "url" character varying(1000) NOT NULL, -- 人物のwikipediaのURL
-    "executed_as_master" boolean NOT NULL DEFAULT false, -- 主体者として実行したか（関連者として保存された場合は立たない）
-    "executed_as_master_at" timestamp NULL, -- 主体者として実行した日時
-    "created" timestamp NOT NULL DEFAULT now(),
-    "updated" timestamp NOT NULL DEFAULT now(),
-    CONSTRAINT people_pkey PRIMARY KEY ("id")
-)
-
--- 人物のWikipedia上のページの表示名をキーとする
-
--- 関連テーブル
-create table relation (
-    "id" bigserial NOT NULL,
-    "master_person_id" bigint NOT NULL, -- 主体者のperson.id
-    "slave_person_id" bigint NOT NULL, -- 関連者のperson.id
-    "point" integer NOT NULL,
-    "created" timestamp NOT NULL DEFAULT now(),
-    "updated" timestamp NOT NULL DEFAULT now(),
-    CONSTRAINT people_pkey PRIMARY KEY ("id")
-)
-
--- master_person_idとslave_person_idはユニーク制約を適用
-ALTER TABLE relation ADD CONSTRAINT uq_relation_master_slave UNIQUE (master_person_id, slave_person_id);
-
--- 外部キー
-ALTER TABLE relation
-  ADD CONSTRAINT fk_relation_master FOREIGN KEY (master_person_id) REFERENCES person(id) ON DELETE CASCADE;
-ALTER TABLE relation
-  ADD CONSTRAINT fk_relation_slave FOREIGN KEY (slave_person_id) REFERENCES person(id) ON DELETE CASCADE;
-```
+- データベーススキーマ（PostgreSQL）の最新定義: [`doc/ddl_postgres.sql`](doc/ddl_postgres.sql)
 
 5. 「1. Wikipediaの検索結果を表示（名前に一致する人物ページのタイトルのリスト）」の中に既にサーバーに保存した情報があればサーバーの情報を元に関連する人物のリストアップを表示する（Wikipediaに対する負荷対策）
 
@@ -225,7 +196,7 @@ ALTER TABLE relation
 - 主体者入力 + 送信
 - 該当する人物名一覧表示（リンク）
 - リンククリック→Wikipedia抽出 or 自サーバー処理（Wikipediaの場合は時間がかかるので通信中のプログレスバー表示）
-- 主体者及び関連者の表示（この時点で自サーバーにも自動保存）、「戻る」で「物名入力 + 送信」に戻る
+- 主体者及び関連者の表示（この時点で自サーバーにも自動保存）、「戻る」で「人物名入力 + 送信」に戻る
 
 8. デモ
 
