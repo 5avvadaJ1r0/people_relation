@@ -227,6 +227,10 @@ ALTER TABLE relation
 - リンククリック→Wikipedia抽出 or 自サーバー処理（Wikipediaの場合は時間がかかるので通信中のプログレスバー表示）
 - 主体者及び関連者の表示（この時点で自サーバーにも自動保存）、「戻る」で「物名入力 + 送信」に戻る
 
+8. デモ
+
+- https://people-relation.pages.dev/
+
 ## ライセンスとデータソース
 
 本リポジトリのソースコードは **Apache License 2.0** で提供されます（[`LICENSE`](LICENSE) を参照）。
