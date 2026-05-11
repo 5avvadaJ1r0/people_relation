@@ -317,6 +317,21 @@ input[type="text"]:focus-visible {
   }
 }
 
+/* 関連者テーブル「主体者として実行」: 2カラムレイアウト（981px〜）のときのみ表示（.grid と同じ閾値） */
+.principalRunAsMasterBtn {
+  display: none;
+  padding: 0;
+  border: none;
+  text-decoration: underline;
+  color: #777;
+}
+
+@media (min-width: 981px) {
+  .principalRunAsMasterBtn {
+    display: inline-block;
+  }
+}
+
 .pill {
   font-size: 14px;
   font-weight: 700;

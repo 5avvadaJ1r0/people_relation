@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGetRelationsAggregate, apiPostRelations, apiSearchPerson } from "../lib/api";
+import { trackPrincipalInputPhase1, trackRelatedSearchPhase2 } from "../lib/analytics";
 import {
   expandWikiResultsResolvingDisambiguationPages,
   useWikiTwoHopExtractor,
@@ -161,7 +162,10 @@ export const App = () => {
     wikiExtract.reset();
   };
 
-  const onSearch = async () => {
+  const onSearch = async (queryOverride?: string) => {
+    const effectiveQuery = (queryOverride ?? query).trim();
+    if (effectiveQuery.length === 0) return;
+
     setBusy(true);
     setError(null);
     resetDetail();
@@ -169,11 +173,13 @@ export const App = () => {
     setWikiResults([]);
     setServerMatches([]);
     setWikiEmptyMessage(null);
+    let wikiResultCount = 0;
+    let serverMatchCount = 0;
     try {
       // どちらか片方が落ちても、片方の検索結果は表示する（特にサーバー停止時にWikipedia検索まで巻き添えで0件になるのを防ぐ）
       let wiki: WikiSearchItem[] = [];
       try {
-        wiki = await wikiSearchPeopleIncludingExact(query);
+        wiki = await wikiSearchPeopleIncludingExact(effectiveQuery);
       } catch (e: any) {
         setError(e?.message ?? String(e));
       }
@@ -195,20 +201,25 @@ export const App = () => {
         if (wikiHumans.length === 0) {
           setWikiResults([]);
           setWikiEmptyMessage("該当人物はいません");
+          wikiResultCount = 0;
         } else {
           setWikiResults(wikiHumans);
+          wikiResultCount = wikiHumans.length;
         }
       } else {
         setWikiResults([]);
         setWikiEmptyMessage("該当人物はいません");
+        wikiResultCount = 0;
       }
 
       try {
-        const server = await apiSearchPerson(query);
+        const server = await apiSearchPerson(effectiveQuery);
         setServerMatches(server);
+        serverMatchCount = server.length;
       } catch (e: any) {
         // サーバー検索が失敗してもWikipedia検索は表示できるので致命扱いにしない
         setServerMatches([]);
+        serverMatchCount = 0;
         setError((prev) => prev ?? (e?.message ?? String(e)));
       }
     } catch (e: any) {
@@ -216,6 +227,11 @@ export const App = () => {
     } finally {
       setProgress(null);
       setBusy(false);
+      trackPrincipalInputPhase1({
+        query_char_count: effectiveQuery.length,
+        wiki_result_count: wikiResultCount,
+        server_match_count: serverMatchCount,
+      });
     }
   };
 
@@ -243,6 +259,11 @@ export const App = () => {
           hasWikiPage: true,
         }))
       );
+      trackRelatedSearchPhase2({
+        source: "server",
+        relation_count: rels.length,
+        master_title: p.title,
+      });
       setProgress({ phase: "キャッシュ取得", done: 1, total: 1 });
     } catch (e: any) {
       setError(e?.message ?? String(e));
@@ -269,6 +290,11 @@ export const App = () => {
       setMasterLabel(master.title ?? master.name);
       setSource("wikipedia");
       setRelations(relations);
+      trackRelatedSearchPhase2({
+        source: "wikipedia",
+        relation_count: relations.length,
+        master_title: master.title ?? master.name,
+      });
 
       // サーバー保存：READMEのフォーマットに寄せて master->slave と slave->master を保存
       const payloadRaw: RelationIn[] = [];
@@ -381,7 +407,11 @@ export const App = () => {
                 </button>
               )}
             </div>
-            <button className="primary" disabled={busy || query.trim().length === 0} onClick={onSearch}>
+            <button
+              className="primary"
+              disabled={busy || query.trim().length === 0}
+              onClick={() => void onSearch()}
+            >
               検索
             </button>
           </div>
@@ -487,6 +517,7 @@ export const App = () => {
               <thead>
                 <tr>
                   <th>関連者</th>
+                  <th style={{ textAlign: "right" }}></th>
                   <th style={{ width: 80, textAlign: "right" }}>主体値</th>
                   <th style={{ width: 80, textAlign: "right" }}>関連値</th>
                   <th style={{ width: 80, textAlign: "right" }}>合計値</th>
@@ -499,6 +530,20 @@ export const App = () => {
                       <a href={r.slave.url} target="_blank" rel="noreferrer">
                         {r.slave.name}
                       </a>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <button
+                        type="button"
+                        className="principalRunAsMasterBtn"
+                        disabled={busy}
+                        onClick={() => {
+                          const q = (r.slave.title ?? r.slave.name).trim();
+                          setQuery(q);
+                          void onSearch(q);
+                        }}
+                      >
+                        主体者として実行
+                      </button>
                     </td>
                     <td style={{ textAlign: "right" }}>{r.forwardPoint}</td>
                     <td style={{ textAlign: "right" }}>{r.reversePoint}</td>
