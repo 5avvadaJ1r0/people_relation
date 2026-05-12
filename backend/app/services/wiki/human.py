@@ -565,9 +565,7 @@ async def batch_human_checks_with_db_redis_priority(
         try:
             r = _redis()
             keys = [_cache_key(t) for _, t in need_redis]
-            raw_vals = (
-                list(cast(Sequence[Any | None], r.mget(keys))) if keys else []
-            )
+            raw_vals = list(cast(Sequence[Any | None], r.mget(keys))) if keys else []
         except redis.RedisError:
             logger.exception(
                 "redis mget failed in batch_human_checks; falling through to live for %s keys",

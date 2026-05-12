@@ -36,6 +36,7 @@ REVERSE_SCORE_WORKERS = WIKI_OUTBOUND_CONCURRENCY
 # フォワードスコアがこれ以下なら slave の extract/HTML reverse フォールバックを省略
 REVERSE_TEXT_FALLBACK_MIN_FORWARD_POINT = 1
 
+
 class _ReverseWorkStop:
     """ワーカー終了用キューsentinel（``object()`` だと Queue の Union が狭まらない）。"""
 
