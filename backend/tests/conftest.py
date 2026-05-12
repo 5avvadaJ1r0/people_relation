@@ -33,14 +33,3 @@ def _empty_db(client: TestClient) -> Iterator[None]:
         conn.execute(text("DELETE FROM wiki_human_cache"))
         conn.execute(text("DELETE FROM person"))
     yield
-
-
-@pytest.fixture
-def mock_wiki_is_human(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.schemas import HumanCheck
-
-    async def fake_is_human(title: str) -> HumanCheck:
-        t = title.strip()
-        return HumanCheck(title=t, qid="Q123", is_human=True, source="test")
-
-    monkeypatch.setattr("app.api.v1.wiki.is_human_by_title", fake_is_human)

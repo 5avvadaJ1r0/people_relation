@@ -6,7 +6,7 @@ from app import crud
 from app.db import SessionLocal
 from app.model import Person, Relation
 from app.schemas import PersonOut, RelationIn, RelationOut
-from app.services.wiki_resolve import (
+from app.services.wiki.resolver.resolve import (
     normalized_person_in,
     resolve_ja_wikipedia_titles_sync,
     title_from_ja_wikipedia_url,

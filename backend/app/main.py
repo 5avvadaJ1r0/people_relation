@@ -23,4 +23,11 @@ def _startup() -> None:
     init_db()
 
 
+@app.on_event("shutdown")
+async def _shutdown_wiki_clients() -> None:
+    from app.services.wiki.human import aclose_shared_http_and_redis
+
+    await aclose_shared_http_and_redis()
+
+
 app.include_router(api_router)
