@@ -70,10 +70,3 @@ export type ApiRelationAggregate = {
   reverse_point: number;
   total_point: number;
 };
-
-export type ApiWikiHuman = {
-  title: string;
-  qid: string | null;
-  is_human: boolean;
-  source: string;
-};

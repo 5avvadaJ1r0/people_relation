@@ -1,4 +1,4 @@
-import type { ApiPerson, ApiRelation, ApiRelationAggregate, ApiWikiHuman, RelationIn } from "./types";
+import type { ApiPerson, ApiRelation, ApiRelationAggregate, RelationIn } from "./types";
 import { resolveApiBaseUrl } from "./apiBase";
 
 const API_BASE = resolveApiBaseUrl();
@@ -11,9 +11,12 @@ const parseJsonOrThrow = async <T>(res: Response, label: string): Promise<T> => 
   throw new Error(`${label}: expected JSON but got "${ct || "unknown"}" body="${head}"`);
 };
 
-export const apiSearchPerson = async (name: string): Promise<ApiPerson[]> => {
+export const apiSearchPerson = async (
+  name: string,
+  init?: { signal?: AbortSignal }
+): Promise<ApiPerson[]> => {
   const url = `${API_BASE}/v1/person/search?name=${encodeURIComponent(name)}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: init?.signal });
   if (!res.ok) throw new Error(`apiSearchPerson failed: ${res.status}`);
   return await parseJsonOrThrow<ApiPerson[]>(res, "apiSearchPerson");
 };
@@ -43,11 +46,3 @@ export const apiPostRelations = async (payload: RelationIn[], executedMasterUrl:
   if (!res.ok) throw new Error(`apiPostRelations failed: ${res.status}`);
   return await parseJsonOrThrow<ApiRelation[]>(res, "apiPostRelations");
 };
-
-export const apiWikiIsHuman = async (title: string): Promise<ApiWikiHuman> => {
-  const url = `${API_BASE}/v1/wiki/is_human?title=${encodeURIComponent(title)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`apiWikiIsHuman failed: ${res.status}`);
-  return await parseJsonOrThrow<ApiWikiHuman>(res, "apiWikiIsHuman");
-};
-

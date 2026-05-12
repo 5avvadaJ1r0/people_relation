@@ -1,0 +1,1 @@
+"""MediaWiki Action API クライアント。"""

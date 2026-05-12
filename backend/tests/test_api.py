@@ -177,6 +177,35 @@ def test_post_relation_replaces_edges_when_executed_master_url(
     assert agg[0]["total_point"] == 7
 
 
+def test_person_search_slave_only_has_relations_false(
+    client: TestClient,
+) -> None:
+    """関連者としてだけ登録された person は has_relations が false（キャッシュ表示対象外）。"""
+    url_master = "https://example.com/cache-spec-master"
+    url_slave = "https://example.com/cache-spec-slave"
+    payload = [
+        {
+            "master": {"name": "主M", "url": url_master, "title": "主M"},
+            "slave": {"name": "従S", "url": url_slave, "title": "従S"},
+            "point": 2,
+        },
+    ]
+    r = client.post(
+        "/api/v1/relation",
+        json=payload,
+        params={"executed_master_url": url_master},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    slave_id = next(x["slave"]["id"] for x in body if x["slave"]["url"] == url_slave)
+
+    r_search = client.get("/api/v1/person/search", params={"name": "従S"})
+    assert r_search.status_code == 200
+    rows = r_search.json()
+    slave_row = next(x for x in rows if x["id"] == slave_id)
+    assert slave_row["has_relations"] is False
+
+
 def test_post_relation_without_executed_master_url(client: TestClient) -> None:
     payload = [
         {
@@ -193,18 +222,3 @@ def test_post_relation_without_executed_master_url(client: TestClient) -> None:
     found = r_search.json()
     assert len(found) == 1
     assert found[0]["has_relations"] is False
-
-
-def test_wiki_is_human(client: TestClient, mock_wiki_is_human: None) -> None:
-    r = client.get("/api/v1/wiki/is_human", params={"title": "テスト人物"})
-    assert r.status_code == 200
-    data = r.json()
-    assert data["title"] == "テスト人物"
-    assert data["qid"] == "Q123"
-    assert data["is_human"] is True
-    assert data["source"] == "test"
-
-
-def test_wiki_is_human_validation(client: TestClient, mock_wiki_is_human: None) -> None:
-    r = client.get("/api/v1/wiki/is_human", params={"title": ""})
-    assert r.status_code == 422

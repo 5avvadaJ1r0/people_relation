@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiGetRelationsAggregate, apiPostRelations, apiSearchPerson } from "../lib/api";
 import { trackPrincipalInputPhase1, trackRelatedSearchPhase2 } from "../lib/analytics";
+import { consumeWikiExtractSse, consumeWikiPersonSearchSse, isAbortError } from "../lib/wikiSse";
 import {
-  expandWikiResultsResolvingDisambiguationPages,
-  useWikiTwoHopExtractor,
-  wikiIsHuman,
-  wikiSearchPeopleIncludingExact,
-} from "../lib/wiki";
+  displayPersonNameFromWikiTitle,
+  isPrincipalRelationsCacheSource,
+  pickServerPersonForWikiTitle,
+} from "../lib/wikiPersonMatch";
 import type { ApiPerson, RelationIn, RelationView, WikiSearchItem } from "../lib/types";
 import urlQrCodeSvg from "../assets/images/svg/url-qr-code.svg";
 
@@ -30,48 +30,23 @@ const formatExecutedAsMasterAt = (iso: string | null | undefined): string | null
   return `${y}年${mo}月${day}日 ${h}時${min}分`;
 };
 
-const displayPersonNameFromWikiTitle = (title: string): string => {
-  // Wikipedia検索のtitleには曖昧さ回避の補足が付くことがある（例: "山田太郎 (俳優)"）。
-  // 表示は人物名のみ、選択/取得は元titleのままにする。
-  return title.replace(/\s*\(.*?\)\s*$/, "").trim();
-};
-
-const filterWikiPeopleOnly = async (
-  items: WikiSearchItem[],
-  onProgress?: (p: { phase: string; done: number; total: number }) => void
-): Promise<WikiSearchItem[]> => {
-  // Wikipedia検索結果には人物以外（作品・団体など）が混ざることがあるため、
-  // Wikidataの P31=Q5 (human) 判定で人物のみ残す。
-  const batchSize = 5;
-  const out: WikiSearchItem[] = [];
-  const total = items.length;
-  for (let i = 0; i < items.length; i += batchSize) {
-    const batch = items.slice(i, i + batchSize);
-    onProgress?.({ phase: "検索結果の人物判定", done: Math.min(i, total), total });
-    const results = await Promise.all(
-      batch.map(async (it) => {
-        try {
-          const x = await wikiIsHuman(it.title);
-          // 判定不能（外部到達不可など）の場合は、人物以外の混入を避けるため落とす
-          const ok = x.source !== "unknown" && x.is_human;
-          return { it, ok };
-        } catch {
-          // 判定APIが落ちている/ネットワーク障害の場合も、人物以外の混入を避けるため表示しない
-          return { it, ok: false };
-        }
-      })
-    );
-    for (const r of results) {
-      if (r.ok) out.push(r.it);
-    }
-  }
-  onProgress?.({ phase: "検索結果の人物判定", done: total, total });
-  return out;
+const devLog = (...args: unknown[]) => {
+  if (import.meta.env.DEV) console.log(...args);
 };
 
 export const App = () => {
   const [query, setQuery] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busyCount, setBusyCount] = useState(0);
+  const busy = busyCount > 0;
+  const startBusy = () => setBusyCount((c) => c + 1);
+  const endBusy = () => setBusyCount((c) => Math.max(0, c - 1));
+
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const extractAbortRef = useRef<AbortController | null>(null);
+  const ensurePersonAbortRef = useRef<AbortController | null>(null);
+  const searchRequestIdRef = useRef(0);
+  const detailSessionRef = useRef(0);
+
   const [error, setError] = useState<string | null>(null);
   const detailRef = useRef<HTMLDivElement | null>(null);
   const queryInputRef = useRef<HTMLInputElement | null>(null);
@@ -91,7 +66,6 @@ export const App = () => {
     return m;
   }, [wikiResults]);
 
-  const wikiExtract = useWikiTwoHopExtractor();
   const [progress, setProgress] = useState<{ phase: string; done: number; total: number } | null>(null);
   const isSearchProgress = progress?.phase === "検索結果の人物判定";
   const progressPct = useMemo(() => {
@@ -104,10 +78,7 @@ export const App = () => {
   const [relations, setRelations] = useState<RelationView[]>([]);
   const [source, setSource] = useState<"server" | "wikipedia" | "">("");
   const [masterExecutedAt, setMasterExecutedAt] = useState<string | null>(null);
-  const masterExecutedAtLabel = useMemo(
-    () => formatExecutedAsMasterAt(masterExecutedAt),
-    [masterExecutedAt]
-  );
+  const masterExecutedAtLabel = formatExecutedAsMasterAt(masterExecutedAt);
 
   const [excludeZeroReverse, setExcludeZeroReverse] = useState(true);
 
@@ -119,14 +90,6 @@ export const App = () => {
     const sorted = [...rows].sort((a, b) => b.totalPoint - a.totalPoint);
     return sorted.slice(0, WIKI_MAX_RELATED_DISPLAY);
   }, [relations, excludeZeroReverse]);
-
-  // Hook側の progress/error を App の表示に反映（既存UIを維持）
-  useEffect(() => {
-    if (wikiExtract.progress) setProgress(wikiExtract.progress);
-  }, [wikiExtract.progress]);
-  useEffect(() => {
-    if (wikiExtract.error) setError(wikiExtract.error);
-  }, [wikiExtract.error]);
 
   useEffect(() => {
     if (!selected) return;
@@ -150,7 +113,7 @@ export const App = () => {
     };
   }, [selected, relations.length, error, progress?.phase]);
 
-  const resetDetail = () => {
+  const clearDetailState = () => {
     setSelected(null);
     setRelations([]);
     setSource("");
@@ -159,14 +122,30 @@ export const App = () => {
     setExcludeZeroReverse(true);
     setProgress(null);
     setError(null);
-    wikiExtract.reset();
   };
+
+  const resetDetail = () => {
+    extractAbortRef.current?.abort();
+    ensurePersonAbortRef.current?.abort();
+    bumpDetailSession();
+    clearDetailState();
+  };
+
+  const bumpDetailSession = () => ++detailSessionRef.current;
 
   const onSearch = async (queryOverride?: string) => {
     const effectiveQuery = (queryOverride ?? query).trim();
     if (effectiveQuery.length === 0) return;
 
-    setBusy(true);
+    searchAbortRef.current?.abort();
+    extractAbortRef.current?.abort();
+    const searchAc = new AbortController();
+    searchAbortRef.current = searchAc;
+    const searchSignal = searchAc.signal;
+    const mySearchId = ++searchRequestIdRef.current;
+    const isStaleSearch = () => mySearchId !== searchRequestIdRef.current;
+
+    startBusy();
     setError(null);
     resetDetail();
     setHasSearched(true);
@@ -176,77 +155,103 @@ export const App = () => {
     let wikiResultCount = 0;
     let serverMatchCount = 0;
     try {
-      // どちらか片方が落ちても、片方の検索結果は表示する（特にサーバー停止時にWikipedia検索まで巻き添えで0件になるのを防ぐ）
-      let wiki: WikiSearchItem[] = [];
-      try {
-        wiki = await wikiSearchPeopleIncludingExact(effectiveQuery);
-      } catch (e: any) {
-        setError(e?.message ?? String(e));
-      }
-
-      if (wiki.length > 0) {
-        setProgress({ phase: "検索結果の人物判定", done: 0, total: wiki.length });
-        let wikiHumans = await filterWikiPeopleOnly(wiki, (p) => setProgress(p));
-        let wikiForFallback = wiki;
-        // 同姓同名で曖昧さ回避のみ返ると Q5 判定で全滅しやすい → hatnote から実記事を合流
-        if (wikiHumans.length === 0) {
-          const expanded = await expandWikiResultsResolvingDisambiguationPages(wiki);
-          if (expanded.length > wiki.length) {
-            wikiForFallback = expanded;
-            setProgress({ phase: "検索結果の人物判定", done: 0, total: expanded.length });
-            wikiHumans = await filterWikiPeopleOnly(expanded, (p) => setProgress(p));
-          }
-        }
-        // 人物判定が外部到達不可などで全滅するケースがあるため、0件なら未フィルタ結果を出す
-        if (wikiHumans.length === 0) {
+      const wikiP = consumeWikiPersonSearchSse(effectiveQuery, {
+        signal: searchSignal,
+        onProgress: (p) => {
+          if (isStaleSearch()) return;
+          setProgress(p);
+        },
+        onError: (m) => {
+          if (isStaleSearch()) return;
+          setError(m);
+        },
+      })
+        .then((msg) => {
+          if (isStaleSearch()) return;
+          setWikiResults(msg.wiki);
+          setWikiEmptyMessage(msg.emptyMessage ?? (msg.wiki.length === 0 ? "該当人物はいません" : null));
+          wikiResultCount = msg.wiki.length;
+        })
+        .catch((e: unknown) => {
+          if (isAbortError(e) || isStaleSearch()) return;
           setWikiResults([]);
           setWikiEmptyMessage("該当人物はいません");
           wikiResultCount = 0;
-        } else {
-          setWikiResults(wikiHumans);
-          wikiResultCount = wikiHumans.length;
-        }
-      } else {
-        setWikiResults([]);
-        setWikiEmptyMessage("該当人物はいません");
-        wikiResultCount = 0;
-      }
+          setError(e instanceof Error ? e.message : String(e));
+        });
 
-      try {
-        const server = await apiSearchPerson(effectiveQuery);
-        setServerMatches(server);
-        serverMatchCount = server.length;
-      } catch (e: any) {
-        // サーバー検索が失敗してもWikipedia検索は表示できるので致命扱いにしない
-        setServerMatches([]);
-        serverMatchCount = 0;
-        setError((prev) => prev ?? (e?.message ?? String(e)));
-      }
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+      const serverP = apiSearchPerson(effectiveQuery, { signal: searchSignal })
+        .then((server) => {
+          if (isStaleSearch()) return;
+          setServerMatches(server);
+          serverMatchCount = server.length;
+        })
+        .catch((e: unknown) => {
+          if (isAbortError(e) || isStaleSearch()) return;
+          setServerMatches([]);
+          serverMatchCount = 0;
+          setError((prev) => prev ?? (e instanceof Error ? e.message : String(e)));
+        });
+
+      await Promise.all([wikiP, serverP]);
+    } catch (e: unknown) {
+      if (isAbortError(e) || isStaleSearch()) return;
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setProgress(null);
-      setBusy(false);
-      trackPrincipalInputPhase1({
-        query_char_count: effectiveQuery.length,
-        wiki_result_count: wikiResultCount,
-        server_match_count: serverMatchCount,
-      });
+      if (!isStaleSearch()) setProgress(null);
+      endBusy();
+      if (!isStaleSearch()) {
+        trackPrincipalInputPhase1({
+          query_char_count: effectiveQuery.length,
+          wiki_result_count: wikiResultCount,
+          server_match_count: serverMatchCount,
+        });
+      }
     }
   };
 
-  const findServerMatchByTitle = (title: string): ApiPerson | undefined => {
-    // サーバーはnameで曖昧検索しているので、title一致(またはname一致)を優先して当てる
-    return serverMatches.find((p) => p.title === title) ?? serverMatches.find((p) => p.name === title);
+  /**
+   * 検索クエリと Wikipedia 記事タイトルが一致しないと `serverMatches` に載らない。
+   * 選択時に記事タイトル（と括弧を外した表示名）で person/search を補い DB の person を特定する。
+   * キャッシュ表示は `has_relations`（主体者として実行済み）が真のときのみ（`isPrincipalRelationsCacheSource`）。
+   */
+  const ensureServerPersonForWikiTitle = async (
+    wikiTitle: string,
+    currentMatches: ApiPerson[],
+    signal?: AbortSignal
+  ): Promise<ApiPerson | undefined> => {
+    const hit0 = pickServerPersonForWikiTitle(wikiTitle, currentMatches);
+    if (hit0) return hit0;
+
+    const queries = [
+      ...new Set(
+        [displayPersonNameFromWikiTitle(wikiTitle), wikiTitle]
+          .map((q) => q.trim())
+          .filter((q) => q.length > 0)
+      ),
+    ];
+
+    for (const q of queries) {
+      try {
+        const rows = await apiSearchPerson(q, { signal });
+        const hit = pickServerPersonForWikiTitle(wikiTitle, rows);
+        if (hit) return hit;
+      } catch (e: unknown) {
+        if (isAbortError(e)) return undefined;
+      }
+    }
+    return undefined;
   };
 
-  const loadFromServer = async (p: ApiPerson) => {
-    setBusy(true);
+  const loadFromServer = async (p: ApiPerson, parentSession?: number) => {
+    const session = parentSession ?? bumpDetailSession();
+    startBusy();
     setError(null);
     setProgress({ phase: "キャッシュ取得", done: 0, total: 1 });
-    console.log("[App] loadFromServer", { id: p.id, name: p.name, title: p.title });
+    devLog("[App] loadFromServer", { id: p.id, name: p.name, title: p.title });
     try {
       const rels = await apiGetRelationsAggregate(p.id);
+      if (session !== detailSessionRef.current) return;
       setMasterLabel(p.title);
       setSource("server");
       setMasterExecutedAt(p.executed_as_master_at ?? null);
@@ -265,27 +270,35 @@ export const App = () => {
         master_title: p.title,
       });
       setProgress({ phase: "キャッシュ取得", done: 1, total: 1 });
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      if (session !== detailSessionRef.current) return;
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      endBusy();
     }
   };
 
-  const extractFromWikipedia = async (title: string) => {
-    setBusy(true);
+  const extractFromWikipedia = async (title: string, parentSession?: number) => {
+    const session = parentSession ?? bumpDetailSession();
+
+    extractAbortRef.current?.abort();
+    const extractAc = new AbortController();
+    extractAbortRef.current = extractAc;
+    const extractSignal = extractAc.signal;
+
+    startBusy();
     setError(null);
-    console.log("[App] extractFromWikipedia start", { title });
+    devLog("[App] extractFromWikipedia start", { title });
     try {
-      const masterName = title;
-      const out = await wikiExtract.run({
-        masterTitle: title,
-        masterName,
-        maxRelated: WIKI_MAX_RELATED_DISPLAY,
+      const { master, relations } = await consumeWikiExtractSse(title, WIKI_MAX_RELATED_DISPLAY, {
+        signal: extractSignal,
+        onProgress: (p) => {
+          if (session !== detailSessionRef.current) return;
+          setProgress(p);
+        },
       });
-      if (!out) return;
-      const { master, relations } = out;
-      console.log("[App] extractFromWikipedia done", { masterTitle: master.title, relations: relations.length });
+      if (session !== detailSessionRef.current) return;
+      devLog("[App] extractFromWikipedia done", { masterTitle: master.title, relations: relations.length });
 
       setMasterLabel(master.title ?? master.name);
       setSource("wikipedia");
@@ -323,38 +336,43 @@ export const App = () => {
       const payload = Array.from(agg.values());
       setProgress({ phase: "キャッシュ保存", done: 0, total: 1 });
       const posted = await apiPostRelations(payload, master.url);
+      if (session !== detailSessionRef.current) return;
       const executedAt =
         posted.find((x) => x.master.url === master.url)?.master.executed_as_master_at ??
         posted[0]?.master.executed_as_master_at ??
         null;
       setMasterExecutedAt(executedAt ?? null);
       setProgress({ phase: "キャッシュ保存", done: 1, total: 1 });
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      if (isAbortError(e) || session !== detailSessionRef.current) return;
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      endBusy();
     }
   };
 
   const onSelect = async (item: WikiSearchItem) => {
-    setSelected(null);
-    setRelations([]);
-    setSource("");
-    setMasterLabel("");
-    setMasterExecutedAt(null);
-    setExcludeZeroReverse(true);
-    setError(null);
-    const m = findServerMatchByTitle(item.title);
+    extractAbortRef.current?.abort();
+    ensurePersonAbortRef.current?.abort();
+    const ensureAc = new AbortController();
+    ensurePersonAbortRef.current = ensureAc;
+
+    const session = bumpDetailSession();
+    clearDetailState();
+
+    const m = await ensureServerPersonForWikiTitle(item.title, serverMatches, ensureAc.signal);
+    if (session !== detailSessionRef.current) return;
+
     const sel: Selected = { wiki: item, serverPerson: m };
     setSelected(sel);
 
-    if (m?.has_relations) {
-      console.log("[App] onSelect -> server", { wikiTitle: item.title, serverId: m.id });
-      await loadFromServer(m);
+    if (m != null && isPrincipalRelationsCacheSource(m)) {
+      devLog("[App] onSelect -> server", { wikiTitle: item.title, serverId: m.id });
+      await loadFromServer(m, session);
       return;
     }
-    console.log("[App] onSelect -> wikipedia", { wikiTitle: item.title });
-    await extractFromWikipedia(item.title);
+    devLog("[App] onSelect -> wikipedia", { wikiTitle: item.title, serverPersonId: m?.id });
+    await extractFromWikipedia(item.title, session);
   };
 
   return (
@@ -565,7 +583,7 @@ export const App = () => {
               <button disabled={busy} onClick={() => resetDetail()}>
                 戻る
               </button>
-              {selected.serverPerson && (
+              {isPrincipalRelationsCacheSource(selected.serverPerson) && (
                 <button
                   className="primary"
                   disabled={busy}

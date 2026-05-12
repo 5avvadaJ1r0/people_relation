@@ -6,6 +6,7 @@
 - **実装**: FastAPI
 - **バージョン**: 0.1.0（サーバー実装上の値）
 - **目的**: Wikipedia由来の人物・関係データの保存、および保存済みデータの検索/取得
+- **Wikipedia / Wikidata**: ブラウザからの直接呼び出しは行わず、**バックエンド**が MediaWiki API と Wikidata Action API（主に `wbgetentities`）を利用する。人物検索・2-hop 抽出は **`GET /api/v1/wiki/person_search_sse`** / **`GET /api/v1/wiki/extract_relations_sse`**（SSE）で進捗付き実行する。人物判定は **`app.services.wiki.human.is_human_by_title`** および **`batch_human_checks_with_db_redis_priority`** を SSE 処理の内部から呼び出す（公開 REST の人物判定エンドポイントは無い）。
 
 ## ベースURL
 
@@ -19,6 +20,7 @@
 
 - **API の実URL**がフロントのページと **異なるオリジン**になるため、ブラウザは CORS により API へのアクセスを制限します。
 - **バックエンド**: 環境変数 `CORS_ORIGINS` に、ユーザーがアクセスする **フロントの origin**（例: `https://cdn.example.com`）をカンマ区切りで追加してください。認証クッキーを使わない通常の `fetch` でも、`Access-Control-Allow-Origin` が必要です。
+- **Wikipedia / Wikidata への outgoing HTTP**: 環境変数 **`WIKIPEDIA_USER_AGENT`**（設定フィールド `wikipedia_user_agent`）で User-Agent を上書きできる。本番では **`localhost` を含めない**公式URL・連絡先を含めることを推奨（[Wikimedia のポリシー](https://foundation.wikimedia.org/wiki/Policy:User-Agent_policy) に準拠）。
 - **フロント（ビルド時）**: `VITE_API_BASE_URL` に API のベース（`/api` 相当までの絶対URL）を設定して静的ビルドします。例: `https://api.example.com/api` → 実リクエストは `https://api.example.com/api/v1/...`。
 - **フロント（実行時・任意）**: 同一ビルド成果物を複数環境に置く場合、`index.html` 内で `main.tsx` より **前**に  
 `window.__PEOPLE_RELATION__ = { apiBaseUrl: "https://api.example.com/api" };`  
@@ -127,11 +129,13 @@ FastAPI標準のエラー応答を返します。
 | name          | string  | yes | 人物名             |
 | title         | string  | yes | 表示名             |
 | url           | string  | yes | WikipediaページURL |
-| has_relations | boolean | yes | 関係データが1件以上あるか   |
-| executed_as_master_at | string (ISO 8601) | null可 | 主体者として実行済みの日時（未実行なら null） |
+| has_relations | boolean | yes | **実装**: `executed_as_master_at` が非 null、または `executed_as_master` が true のとき true。フィールド名は `has_relations` だが、「主体者として関係保存を実行したことがあるか」を表す（`person` 行の有無・関連件数とは一致しない場合がある） |
+| executed_as_master_at | string (ISO 8601) | null可 | 主体者として実行した日時（未実行なら null） |
 
 
-### WikiHuman
+### HumanCheck（`is_human_by_title` の戻り値・内部）
+
+`app.services.wiki.human.is_human_by_title` は **`@dataclass` の `HumanCheck`**（`app.schemas`）を返す。`app.services.wiki.extract.principal_search` / `app.services.wiki.extract.two_hop` から await する。**HTTP エンドポイントとしては公開しない**（旧 `GET /api/v1/wiki/is_human` は廃止）。
 
 
 | フィールド    | 型       | 必須    | 説明                                        |
@@ -144,11 +148,24 @@ FastAPI標準のエラー応答を返します。
 
 ## エンドポイント一覧
 
-### 1) ヘルスチェック（素のパス）
+実装（`app.main` + `app.api.v1.router`）上、**すべての API は `/api/v1` 配下**です。ルート直下の `GET /health` や `GET /api/health` は **存在しません**（docker の nginx は `/api/` をバックエンドの `/api/` にそのまま転送する）。
 
-`GET /health`
+| メソッド | パス | 概要 |
+| --- | --- | --- |
+| GET | `/api/v1/health` | プロセス生存 |
+| GET | `/api/v1/ready` | DB 接続確認 |
+| POST | `/api/v1/relation` | 関係の upsert |
+| GET | `/api/v1/person/search` | 保存済み人物検索 |
+| GET | `/api/v1/person/{person_id}/relations` | 主体→関連（最大50件） |
+| GET | `/api/v1/person/{person_id}/relations_aggregate` | 双方向集計（最大50件→total でソート） |
+| GET | `/api/v1/wiki/person_search_sse` | Wikipedia 検索 + 人物判定（SSE） |
+| GET | `/api/v1/wiki/extract_relations_sse` | 2-hop 抽出（SSE） |
 
-- **用途**: プロセス生存確認（APIプレフィックス無し）
+### 1) ヘルスチェック
+
+`GET /api/v1/health`
+
+- **用途**: プロセス生存確認
 - **レスポンス 200**:
 
 ```json
@@ -163,22 +180,22 @@ sequenceDiagram
     participant FE as Frontend/Client
     participant API as FastAPI
 
-    FE->>API: GET /health
+    FE->>API: GET /api/v1/health
     API-->>FE: 200 {ok:true}
 ```
 
+### 2) レディチェック（DB）
 
+`GET /api/v1/ready`
 
-### 2) ヘルスチェック（/api互換）
-
-`GET /api/health`
-
-- **用途**: nginx配下などで `/api/health` を叩くための互換エンドポイント
+- **用途**: DB に `SELECT 1` が通るか確認（起動待ち・オーケストレーション用）
 - **レスポンス 200**:
 
 ```json
-{ "ok": true }
+{ "ok": true, "db": true }
 ```
+
+- **レスポンス 503**: DB 接続失敗時（`detail` に理由）
 
 #### 通信シーケンス
 
@@ -187,12 +204,16 @@ sequenceDiagram
     autonumber
     participant FE as Frontend/Client
     participant API as FastAPI
+    participant DB as Postgres
 
-    FE->>API: GET /api/health
-    API-->>FE: 200 {ok:true}
+    FE->>API: GET /api/v1/ready
+    API->>DB: SELECT 1
+    alt ok
+        API-->>FE: 200 {ok:true,db:true}
+    else failure
+        API-->>FE: 503 {detail:"db not ready: ..."}
+    end
 ```
-
-
 
 ### 3) 関係データの保存（upsert）
 
@@ -205,7 +226,7 @@ sequenceDiagram
 
 #### クエリパラメータ
 
-- `**executed_master_url`**（任意）: フロントが Wikipedia 抽出の「主体者」の URL を渡す。値が一致する **person が既に DB にいるときのみ**、保存ループの前に次を実行する。
+- `executed_master_url`（任意）: フロントが Wikipedia 抽出の「主体者」の URL を渡す。値が一致する **person が既に DB にいるときのみ**、保存ループの前に次を実行する。
   1. その人物を **master** とする `relation` 行を **すべて DELETE**
   2. 直前の forward でその主体が **slave** だった逆向き（旧 slave → 主体）の `relation` 行だけ DELETE（再実行で付け替わった関連の reverse を掃除するため）
   3. その後、ペイロードどおりに upsert（新しい `relation.id` が振られる）。**他主体が master の関係**（他人が主体として保存した行）は触れない。
@@ -241,12 +262,26 @@ sequenceDiagram
 ```json
 [
   {
-    "master": { "id": 1, "name": "AAA", "title": "AAA BBB", "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89" },
-    "slave": { "id": 2, "name": "BBB", "title": "CCC DDD", "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83" },
+    "master": {
+      "id": 1,
+      "name": "AAA",
+      "title": "AAA BBB",
+      "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
+      "executed_as_master_at": "2026-05-12T10:00:00"
+    },
+    "slave": {
+      "id": 2,
+      "name": "BBB",
+      "title": "CCC DDD",
+      "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83",
+      "executed_as_master_at": null
+    },
     "point": 10
   }
 ]
 ```
+
+`executed_as_master_at` は主体者として関係保存を実行した日時（未設定は `null`）。`POST` 直後に主体が更新された場合のみ値が入ることが多い。
 
 #### エラー
 
@@ -320,10 +355,13 @@ sequenceDiagram
     "name": "AAA",
     "title": "AAA BBB",
     "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
-    "has_relations": true
+    "has_relations": true,
+    "executed_as_master_at": "2026-05-12T10:00:00"
   }
 ]
 ```
+
+> 例の整合: `has_relations: true` のときは通常 `executed_as_master_at` も非 null（主体者として `POST /api/v1/relation` が `executed_master_url` 付きで実行済み）。`has_relations: false` の例は `executed_as_master_at: null` とする（関連者としてのみ `person` に存在する場合など）。
 
 #### エラー
 
@@ -341,7 +379,7 @@ sequenceDiagram
     FE->>API: GET /api/v1/person/search?name=...
     API->>DB: SELECT person WHERE name ILIKE %name% LIMIT 20
     DB-->>API: Person[]
-    Note over API: executed_as_master(_at) から has_relations を算出
+    Note over API: crud.search_persons の第2要素を has_relations に格納（executed_as_master 系フラグ）
     API-->>FE: 200 PersonSearchOut[]
 ```
 
@@ -363,8 +401,20 @@ sequenceDiagram
 ```json
 [
   {
-    "master": { "id": 1, "name": "AAA", "title": "AAA BBB", "url": "..." },
-    "slave": { "id": 2, "name": "BBB", "title": "CCC DDD", "url": "..." },
+    "master": {
+      "id": 1,
+      "name": "AAA",
+      "title": "AAA BBB",
+      "url": "https://ja.wikipedia.org/wiki/...",
+      "executed_as_master_at": null
+    },
+    "slave": {
+      "id": 2,
+      "name": "BBB",
+      "title": "CCC DDD",
+      "url": "https://ja.wikipedia.org/wiki/...",
+      "executed_as_master_at": null
+    },
     "point": 10
   }
 ]
@@ -414,8 +464,20 @@ sequenceDiagram
 ```json
 [
   {
-    "master": { "id": 1, "name": "AAA", "title": "AAA BBB", "url": "..." },
-    "slave": { "id": 2, "name": "BBB", "title": "CCC DDD", "url": "..." },
+    "master": {
+      "id": 1,
+      "name": "AAA",
+      "title": "AAA BBB",
+      "url": "https://ja.wikipedia.org/wiki/...",
+      "executed_as_master_at": null
+    },
+    "slave": {
+      "id": 2,
+      "name": "BBB",
+      "title": "CCC DDD",
+      "url": "https://ja.wikipedia.org/wiki/...",
+      "executed_as_master_at": null
+    },
     "forward_point": 10,
     "reverse_point": 8,
     "total_point": 18
@@ -452,67 +514,67 @@ sequenceDiagram
 
 
 
-### 7) Wikipediaタイトルの人物判定（Wikidata）
+### 7) 人物判定（内部: `app.services.wiki.human.is_human_by_title`）
 
-`GET /api/v1/wiki/is_human?title=...`
+公開 HTTP エンドポイントは無い。`async def is_human_by_title(title: str) -> HumanCheck`（`app.services.wiki.human`）を **Wikipedia 検索 SSE** / **2-hop 抽出 SSE** の処理中に呼び出す。
 
-- **用途**: Wikidataの `instance of (P31)` が `human (Q5)` かで人物判定
-- **クエリ**
-  - `title` (string, 必須, min_length=1)
-- **キャッシュ（優先順）**: **Postgres `wiki_human_cache`（URLキー、人物以外もキャッシュ）** → Redis（タイトル単位）→ Wikipedia →（必要時）Wikidata。判定完了時は `wiki_human_cache` に `title` / `url` / `qid` / `is_human` を upsert する（記事が存在しないレスポンスのみは DB に載せない）。**`person` テーブルには判定の副作用で行を作らない**（`person` の追加・更新は `POST /api/v1/relation` 経由のみ）。
-- **補足**: Wikipedia/Wikidata 側の一時的なエラー時は `source="unknown"` で返すが、**Redis / wiki_human_cache には誤キャッシュしない**（`is_human:false` を短TTLでキャッシュすると、再取得時に `source=cache` となりフロントが「判定不能なのに非人物」と誤って固定除外しやすいため）。なおフロントは `source="unknown"`（判定不能）を **表示しない** 扱いにして、人物以外の混入を避ける。
+- **Wikidata / Wikipedia 側の実装（ライブ判定）**: まず Wikidata の [`wbgetentities`](https://www.wikidata.org/w/api.php?action=help&modules=wbgetentities) に `sites=jawiki`・`titles=...`・`props=claims|sitelinks` を渡し、返却エンティティの **`P31`（instance of）に `Q5`（human）** があるかで判定する。`sites+titles` だけでは解決できない別名（例: jawiki リダイレクトのみの表記）については、続けて ja.wikipedia の `action=query`（`prop=pageprops`・`ppprop=wikibase_item`・`redirects=1`）で QID を取得し、必要な QID だけを `wbgetentities` の `ids=...`・`props=claims` でまとめて再取得して `P31` を解釈する。**バッチ未キャッシュ分**は `titles=A|B|C`（最大 50 件／リクエスト）で `wbgetentities` を束ね、2-hop 抽出では外向きクォータを **バッチ 1 回あたり 1 単位**で消費する `live_batch_resolver` を用いる。
+- **入力**: ページタイトル文字列。空（または空白のみ）のときは `source="unknown"` / `is_human=false` の `HumanCheck` を返す（HTTP 422 は発生しない）。
+- **共有クライアント**: Redis は **プロセス内シングルトン**（接続プール再利用）。`httpx.AsyncClient` は **ja.wikipedia.org / www.wikidata.org 兼用のシングルトン**（`shutdown` で `aclose`）。タイトル単位の従来ライブ解決のみ **`asyncio.Semaphore`**（既定同時 `8`）で抑止する。
+- **キャッシュ（優先順）**: **Postgres `wiki_human_cache`（URLキー、人物以外もキャッシュ）** → Redis（キー `wiki:is_human:ja:{normalized_title}`。先頭末尾の空白除去と `_`↔半角空白の正規化により、canonical 表記と入力表記の Redis ミスマッチを抑える）→（ライブ）Wikidata `wbgetentities` →（必要時のみ）Wikipedia `query` →（必要時）Wikidata `wbgetentities(ids)`。ライブバッチでは **チャンク（最大 50 タイトル）単位で 1 回 `commit`** し、ループ内の逐次 `commit` による WAL 負荷を避ける。判定完了時は `wiki_human_cache` に `title` / `url` / `qid` / `is_human` を upsert する（**Wikipedia 上で記事が存在しない**レスポンスのみは DB に載せない）。**`person` テーブルには判定の副作用で行を作らない**（`person` の追加・更新は `POST /api/v1/relation` 経由のみ）。
+- **補足**: Wikipedia/Wikidata 側の一時的なエラー時は `source="unknown"` で返すが、**Redis / wiki_human_cache には誤キャッシュしない**。サーバー側の検索・抽出パイプラインでは `source="unknown"`（判定不能）を **人物として扱わない**（候補から除外）ことで、人物以外の混入を避ける。
 
-#### 通信シーケンス（Wikipedia/Wikidata + Redis）
+#### 処理シーケンス（キャッシュ階層）
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant FE as Frontend
-    participant API as FastAPI
+    participant Caller as 呼び出し元<br/>(principal_search / two_hop_extract)
+    participant WH as wiki.human.is_human_by_title
     participant DB as Postgres (wiki_human_cache)
     participant R as Redis
-    participant WP as Wikipedia API (ja)
-    participant WD as Wikidata EntityData
+    participant WD as Wikidata API (wbgetentities)
+    participant WP as Wikipedia API (ja, query フォールバック)
 
-    FE->>API: GET /api/v1/wiki/is_human?title=...
-    API->>DB: SELECT wiki_human_cache WHERE url=記事URL
+    Caller->>WH: await is_human_by_title(title)
+    WH->>DB: SELECT wiki_human_cache WHERE url=記事URL
     alt db cache hit
-        DB-->>API: row
-        API-->>FE: {title,qid,is_human,source:"db_cache"}
+        DB-->>WH: row
+        WH-->>Caller: HumanCheck(source:db_cache)
     else db cache miss
-        API->>R: GET wiki:is_human:ja:{title}
+        WH->>R: GET wiki:is_human:ja:{normalized_title}
         alt Redis hit
-            R-->>API: {qid,is_human}
-            API-->>FE: {title,qid,is_human,source:"cache"}
+            R-->>WH: {qid,is_human}
+            WH-->>Caller: HumanCheck(source:cache)
         else Redis miss
-            API->>WP: GET /w/api.php?action=query&prop=pageprops&ppprop=wikibase_item&titles=...&redirects=1
-            alt Wikipedia error (timeout/拒否など)
-                Note over API,R: Redis/wiki_human_cache に書かない
-                API-->>FE: {title,qid:null,is_human:false,source:"unknown"}
-            else Wikipedia ok
-                WP-->>API: 正規タイトル / qid (or null)
-                API->>DB: SELECT wiki_human_cache WHERE url=正規タイトル由来URL
-                alt db cache hit after redirect
-                    DB-->>API: row
-                    API-->>FE: {title,qid,is_human,source:"db_cache"}
-                else continue
-                    alt 記事なし（missing のみ）
-                        API->>R: SETEX（短TTL相当のJSON）
-                        API-->>FE: {title,qid:null,is_human:false,source:"live"}
-                    else qid is null（項目無し）
-                        API->>R: SETEX key 604800 {"qid":null,"is_human":false}
-                        API->>DB: UPSERT wiki_human_cache（title/url/qid=null/is_human=false）
-                        API-->>FE: {title,qid:null,is_human:false,source:"live"}
-                    else qid exists
-                        API->>WD: GET /Special:EntityData/{qid}.json
-                        alt Wikidata error
-                            Note over API,R: Redis/wiki_human_cache に書かない
-                            API-->>FE: {title,qid,is_human:false,source:"unknown"}
-                        else Wikidata ok
-                            WD-->>API: claims.P31 contains Q5?
-                            API->>R: SETEX key 2592000 {"qid":qid,"is_human":(P31 has Q5)}
-                            API->>DB: UPSERT wiki_human_cache（title/url/qid/is_human）
-                            API-->>FE: {title,qid,is_human,source:"live"}
+            WH->>WD: wbgetentities sites=jawiki titles=... props=claims|sitelinks
+            alt Wikidata HTTP 失敗
+                Note over WH,R: Redis/wiki_human_cache に書かない
+                WH-->>Caller: HumanCheck(source:unknown)
+            else Wikidata ok / jawiki タイトルでエンティティ取得
+                WD-->>WH: entities（P31 に Q5 含むか）
+                alt sitelinks で入力タイトルにマッチ
+                    WH->>R: SETEX（TTL は肯定/否定で切替）
+                    WH->>DB: UPSERT wiki_human_cache
+                    WH-->>Caller: HumanCheck(source:live)
+                else 未マッチ（リダイレクト別名など）
+                    WH->>WP: query pageprops wikibase_item redirects=1
+                    alt Wikipedia 失敗
+                        WH-->>Caller: HumanCheck(source:unknown)
+                    else Wikipedia ok
+                        WP-->>WH: QID（または missing）
+                        alt 記事 missing
+                            WH->>R: SETEX（短TTL相当のJSON）
+                            WH-->>Caller: HumanCheck(source:live)
+                        else QID 取得
+                            WH->>WD: wbgetentities ids=Q... props=claims
+                            alt claims 取得失敗
+                                WH-->>Caller: HumanCheck(source:unknown)
+                            else claims ok
+                                WH->>R: SETEX
+                                WH->>DB: UPSERT wiki_human_cache
+                                WH-->>Caller: HumanCheck(source:live)
+                            end
                         end
                     end
                 end
@@ -521,198 +583,104 @@ sequenceDiagram
     end
 ```
 
+#### 戻り値の例（フィールド形状）
 
-
-#### レスポンス 200
-
-`WikiHuman`
+`HumanCheck` を辞書化した場合と同形のフィールドを持つ。
 
 ```json
 {
   "title": "AAA",
   "qid": "Q12345",
   "is_human": true,
-  "source": "person_db"
+  "source": "db_cache"
 }
 ```
 
-#### エラー
+### 8) Wikipedia 検索・2-hop 抽出（サーバー完結 + SSE 進捗）
 
-- **422**: `title` 未指定/空文字など
+フロントエンド（本リポジトリの React）は **Wikipedia / Wikidata に直接接続しません**。人物検索・曖昧さ回避展開・本文/wikitext 解析・2-hop 抽出・人物判定はすべて **FastAPI 上で実行**し、長時間処理中の進捗は **Server-Sent Events (SSE)** でストリーミングします（`frontend/src/lib/wikiSse.ts` の `EventSource`）。
 
-## フロントエンドからWikipediaへ直接アクセスする処理
+- **CORS**: SSE も通常の `fetch` と同様、**API と同一オリジン**（例: nginx 経由で `http://localhost:8080` のページから `http://localhost:8080/api/v1/wiki/..._sse`）であれば追加設定は不要。別オリジンから API だけ別ホストにする場合は `CORS_ORIGINS` にフロントの origin を含める。
+- **レスポンスヘッダ（実装）**: `Content-Type: text/event-stream`、`Cache-Control: no-cache`、`Connection: keep-alive`、`X-Accel-Buffering: no`（nginx のバッファリング抑止）。
 
-本プロジェクトはバックエンドAPIに加えて、フロントエンドが **Wikipedia API（`https://ja.wikipedia.org/w/api.php`）** を直接呼び出す処理を持ちます（`frontend/src/lib/wiki/`*）。
+#### 8-1) `GET /api/v1/wiki/person_search_sse`
 
-### A) Wikipedia人物検索（フロント直叩き）
+- **目的**: クエリに対する日本語 Wikipedia 検索、Wikidata（`P31=Q5`）による人物フィルタ、必要時の曖昧さ回避ページからの hatnote 展開をサーバーで完結させる。
+- **認証**: なし（公開 API と同様）。
+- **クエリ**
+  - `q` (string, 必須, min_length=1): 検索語（氏名など）
+- **レスポンス**: `Content-Type: text/event-stream`（UTF-8）。本文は `data: {JSON}\n\n` を繰り返し送る。
+- **イベント種別**
+  - **進捗**: `{"type":"progress","phase":"検索結果の人物判定","done":3,"total":20}`（`phase` は処理段階の日本語ラベル）
+  - **完了**: `{"type":"search_result","wiki":[{"title":"...","pageid":123,"snippet":"..."}],"emptyMessage":null}`  
+    - 人物のみが残らなかった場合は `wiki: []` かつ `emptyMessage` に理由文言（例: 「該当人物はいません」）
+  - **エラー**: `{"type":"error","message":"..."}` の後にストリーム終了
+- **外部 API（サーバーが呼び出す）**: `https://ja.wikipedia.org/w/api.php`（検索・query・parse 等）、および人物判定は **`is_human_by_title` / `batch_human_checks_with_db_redis_priority`**（DB `wiki_human_cache` → Redis → Wikidata `wbgetentities` →（必要時）Wikipedia `query` →（必要時）Wikidata `wbgetentities(ids)`）と同一キャッシュ階層。
+- **人物判定（検索結果のバッチ）**: `filter_wiki_people_only` は **`batch_human_checks_with_db_redis_priority`** を用い、バッチ内タイトルについて **`wiki_human_cache` を URL 単位で DB 一括取得**する。未命中のみ Redis `MGET`、さらに未命中のみ **既定では `live_resolve_human_checks_wbget_batch`（`wbgetentities` を最大 50 タイトル／回）** を実行する。
+- **レート制限**: サーバー側で Wikipedia 向けリクエストに **最小間隔（約150ms）** と **429/503/504 時の指数バックオフ再試行** を適用。
 
-- **呼び出し元**: `wikiSearchPeople()` / `wikiSearchPeopleIncludingExact()`
-- **外部API**: Wikipedia API `action=query&list=search`（対応 wiki では `srwhat=title` を付与してタイトル寄りに検索）
-- **補足**: **日本語版 Wikipedia では `srwhat=title` が無効**（レスポンス `search-title-disabled`）な場合がある。そのときは `**srwhat` なし**で同じ `srsearch` を再実行する。
+#### 8-2) `GET /api/v1/wiki/extract_relations_sse`
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant UI as UI
-    participant FE as Frontend (WikiApiClient)
-    participant WP as Wikipedia API (ja)
+- **目的**: 指定した記事タイトルを主体とする **2-hop 関連者スコアリング**（旧フロント `WikiTwoHopExtractorService` 相当）をサーバーで実行する。
+- **認証**: なし。
+- **クエリ**
+  - `title` (string, 必須, min_length=1): 主体の Wikipedia 記事タイトル
+  - `max_related` (int, 任意, 既定 100, 1〜500): 返却する関連者の最大件数
+- **レスポンス**: `text/event-stream`。`data: {JSON}\n\n` 形式。
+- **イベント種別**
+  - **進捗**: `{"type":"progress","phase":"人物判定処理中","done":120,"total":400}` など（段階例: 主体者情報取得、主体者情報解析、候補確認、人物判定、関連者検索）
+  - **完了**: `{"type":"extract_result","master":{"name":"...","title":"...","url":"https://ja.wikipedia.org/wiki/..."},"relations":[{"slave":{...},"forwardPoint":1,"reversePoint":0,"totalPoint":1,"hasWikiPage":true},...]}`
+  - **エラー**: `{"type":"error","message":"..."}`
+- **wikitext リンク集計**: サーバーは `mwparserfromhell` により wikitext を解析し、レベル2見出し `== 脚注 ==` / `== 外部リンク ==` 節を除いたうえで `[[...]]` リンクを集計する（旧フロントの `wtf_wikipedia` ベース実装と同等の意図）。
+- **人物判定**: 抽出パイプライン内の正規化マージ後フィルタでは **`batch_human_checks_with_db_redis_priority`**（`live_batch_resolver` で外向きクォータ付き **`live_resolve_human_checks_wbget_batch`**）を用いる。単発の人物確認では **`app.services.wiki.human.is_human_by_title`**（同一キャッシュ階層）を直接 await する。
 
-    UI->>FE: wikiSearchPeople(query)
-    FE->>WP: GET /w/api.php?action=query&list=search&srwhat=title&srsearch=...&srlimit=20&origin=*
-    alt search-title-disabled
-        WP-->>FE: error JSON
-        FE->>WP: GET /w/api.php?action=query&list=search&srsearch=...&srlimit=20&origin=*（srwhat 省略）
-        WP-->>FE: search results (JSON)
-    else ok
-        WP-->>FE: search results (JSON)
-    end
-    FE-->>UI: WikiSearchItem[]
-```
+#### 8-3) フロント（React）の初回選択とキャッシュ（参照実装）
 
+本リポジトリの `frontend/src/ui/App.tsx` / `frontend/src/lib/wikiPersonMatch.ts` は概ね次のとおり（`isPrincipalRelationsCacheSource` は **`PersonSearchOut.has_relations` と同義**）。
 
+- **検索送信時**: `GET /api/v1/wiki/person_search_sse` と `GET /api/v1/person/search` を並列実行する。
+- **選択時**: 検索語と Wikipedia の記事タイトルが一致しないと `person/search` の結果に主体が載らないことがあるため、**記事タイトルおよび括弧を除いた表示名**でも `GET /api/v1/person/search` を追加で呼び、`Person.url` 由来のタイトル正規化込みで同一人物を突き合わせる。
+- **`has_relations` が true** のときのみ、初回から **`GET /api/v1/person/{id}/relations_aggregate`** でキャッシュ表示する（Wikipedia 抽出 SSE は呼ばない）。
+- **`has_relations` が false** のときは、初回から **`GET /api/v1/wiki/extract_relations_sse`** で Wikipedia 抽出する（関連者としてだけ DB にいる人物は「キャッシュ表示」対象外）。
+- **「再実行」**: 常に `extract_relations_sse` を呼ぶ。
+- **「キャッシュ再取得」**: `has_relations` が true のときのみボタンを表示し、`relations_aggregate` を再取得する。
 
-### A-補) 曖昧さ回避ページから候補を展開（フロント直叩き）
-
-- **呼び出し元**: 検索直後の Q5 人物フィルタで候補が 0 件になったとき `expandWikiResultsResolvingDisambiguationPages()`
-- **外部API**: Wikipedia API `action=query&prop=pageprops&ppprop=disambiguation&titles=...`（曖昧さ回避の判定）および `action=parse`（hatnote 内リンク抽出・既存 `fetchHatnoteNs0LinkSets`）
-- **目的**: 曖昧さ回避ページは Wikidata 上 `instance of human (Q5)` ではないため `GET /api/v1/wiki/is_human` で弾かれやすい。冒頭の hatnote から実人物記事タイトルを解決し、検索候補に合流させてから再度人物判定する。
-
-### B) タイトルの厳密一致確認（フロント直叩き）
-
-- **呼び出し元**: `wikiSearchPeopleIncludingExact()`
-- **外部API**: Wikipedia API `action=query&titles=...&redirects=1`
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant UI as UI
-    participant FE as Frontend (WikiApiClient)
-    participant WP as Wikipedia API (ja)
-
-    UI->>FE: lookupExactTitle(title)
-    FE->>WP: GET /w/api.php?action=query&titles=...&redirects=1&origin=*
-    WP-->>FE: pages (JSON)
-    FE-->>UI: WikiSearchItem or null
-```
-
-
-
-### C) 2-hop 関連者抽出（フロント直叩き + バックエンド人物判定）
-
-- **呼び出し元**: `extractRelationsTwoHop()`
-- **外部API（Wikipedia）**: `action=query`（extracts/info/redirects）と `action=parse`（text/wikitext。ns0 リンクは `prop=links` ではなくノイズ節除去後の HTML から抽出）
-- **補足**: Wikipedia/Wikidataへの過剰連打を避けるため、フロント側で **最小間隔（既定150ms）+ 429/503/504時リトライ** を行う（`ExternalApiFetcher`）。
-- **人物判定**: 候補の一部はバックエンド `GET /api/v1/wiki/is_human` を呼び出して判定（**Postgres `wiki_human_cache` → Redis** の順で参照し、DB にもキャッシュする）。
-- **主体者本人の除外**: 本文では `[[ひろゆき]]` のように **正規記事タイトル以外のリダイレクト表記**で自分へリンクすることがある。前方スコアから主体の `canonicalTitle`・`masterTitle` に加え、`action=query&prop=redirects` で得た **当該記事へのリダイレクト元タイトル一覧**も同一人物として共起カウント対象から除外し、集約後の関連者リストでも名前・URL がその別名に一致する行を落とす。
-- **「脚注」「外部リンク」節・カテゴリ・navbox の除外**: 抽出・共起カウント・hatnote 用リンク集合のノイズを減らすため、`action=parse` の HTML から `**<section aria-labelledby="脚注">` / `<section aria-labelledby="外部リンク">`（実ページ相当）**、および `**h2#脚注` / `h2#外部リンク` の見出しブロックから次の `mw-heading2` または最初の `navbox` / パーサレポート手前**までを除去する。続けて `**class` にトークン `navbox` を含む `<div>` / `<table>`**（`navbox-inner` のみのクラスは対象外）をネスト対応ですべて除去し、`**{{キングレコード}}` 等のナビゲーションに由来する同僚歌手リンク**を参照対象から外す。`**id="catlinks"`（カテゴリ表示ブロック）はネストした `<div>` ごと除去する（API レスポンスに含まれる場合のみ）。本文中の `[[記事名#脚注|…]]` / `[[記事名#外部リンク|…]]` および `href="/wiki/記事名#脚注"` 形式の節リンクは、当該記事の脚注・外部リンクブロックへのジャンプであることが多いため、wikitext の `[[...]]` カウントおよびノイズ除去後 HTML からの ns0 リンク抽出からも除外する。`prop=extracts` のプレーン本文は、`脚注` 見出し行から次のよくある見出し（注釈・出典・参考文献・外部リンク等）の直前まで**、および末尾の `**外部リンク` 見出し行以降**を除去する。wikitext の `[[...]]` カウントでは、`== 脚注 ==` / `== 外部リンク ==` から **次のレベル2見出し**、または `**{{Navboxes`** / **空行のあとの `{{`**（`\n\n{{`）、`**{{Normdaten}}**`、`**[[Category:**` 等の直前までを除去する。
-
-#### C-1) 主体者ページ取得（並列）
+以下は **8-1 の検索 SSE** のシーケンス例。
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    participant UI as UI
-    participant FE as Frontend (WikiTwoHopExtractorService)
-    participant WP as Wikipedia API (ja)
+  autonumber
+  participant UI as Frontend (React)
+  participant API as FastAPI
+  participant WP as Wikipedia API (ja)
+  participant WD as Wikidata（is_human_by_title 内）
 
-    UI->>FE: extractRelationsTwoHop(masterTitle,...)
-    par 並列取得
-        FE->>WP: GET /w/api.php?action=query&prop=extracts&explaintext=1&titles=masterTitle&redirects=1&origin=*
-        WP-->>FE: extract (JSON)
-    and
-        FE->>WP: GET /w/api.php?action=parse&prop=wikitext&page=masterTitle&redirects=1&origin=*
-        WP-->>FE: wikitext (JSON)
-    and
-        FE->>WP: GET /w/api.php?action=query&prop=info&titles=masterTitle&redirects=1&origin=*
-        WP-->>FE: canonical title (JSON)
-    and
-        FE->>WP: GET /w/api.php?action=parse&prop=text&page=masterTitle&redirects=1&origin=*
-        WP-->>FE: html (JSON)
-        Note over FE: メソッドごとに複数回取得する場合あり。脚注・外部リンク等除去後にプレーン本文・ns0リンク集合（旧 prop=links は脚注・外部リンク内も含むため不使用）・hatnote 判定に利用
-    end
-    FE-->>UI: 進捗更新 + 抽出処理継続
+  UI->>API: EventSource GET /api/v1/wiki/person_search_sse?q=...
+  loop 進捗
+    API-->>UI: SSE data: {"type":"progress",...}
+  end
+  API->>WP: action=query list=search / parse / ...
+  API->>WD: 人物判定（キャッシュミス時）
+  API-->>UI: SSE data: {"type":"search_result","wiki":[...]}
 ```
-
-
-
-#### C-2) 候補ページの存在確認（必要時）
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant FE as Frontend (WikiTwoHopExtractorService)
-    participant WP as Wikipedia API (ja)
-
-    loop href未確定の上位候補（バッチ）
-        FE->>WP: GET /w/api.php?action=query&titles=候補名&redirects=1&origin=*
-        WP-->>FE: pages (JSON) => pageid/title
-        Note over FE: hitした候補に href を付与
-    end
-```
-
-
-
-#### C-3) 人物判定（候補の一部）
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant FE as Frontend
-    participant API as FastAPI
-    participant R as Redis
-    participant WP as Wikipedia API (ja)
-    participant WD as Wikidata EntityData
-
-    loop 上位候補（バッチ）
-        FE->>API: GET /api/v1/wiki/is_human?title=候補タイトル
-        Note over API: 以降は「7) Wikipediaタイトルの人物判定」の図に従う
-        API->>R: GET wiki:is_human:ja:{title}
-        alt cache hit
-            R-->>API: {qid,is_human}
-            API-->>FE: {is_human,source:"cache"}
-        else cache miss
-            API->>WP: /w/api.php ... pageprops(wikibase_item)
-            API->>WD: /Special:EntityData/{qid}.json
-            API->>R: SETEX ...
-            API-->>FE: {is_human,source:"live"}
-        end
-    end
-```
-
-
-
-#### C-4) 逆参照（関連者ページを追加取得して reversePoint 算出）
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant FE as Frontend (WikiTwoHopExtractorService)
-    participant WP as Wikipedia API (ja)
-
-    loop 関連者の一部（条件付き）
-        par 並列取得
-            FE->>WP: GET /w/api.php?action=parse&prop=wikitext&page=slaveTitle&redirects=1&origin=*
-            WP-->>FE: wikitext (JSON)
-        and
-            FE->>WP: GET /w/api.php?action=query&prop=extracts&explaintext=1&titles=slaveTitle&redirects=1&origin=*
-            WP-->>FE: extract (JSON)
-        and
-            FE->>WP: GET /w/api.php?action=parse&prop=text&page=slaveTitle&redirects=1&origin=*
-            WP-->>FE: html (JSON)
-            Note over FE: メソッドごとに複数回取得する場合あり。脚注・外部リンク除去後にプレーン本文・ns0リンク集合に利用
-        end
-        Note over FE: wikitext・本文・ノイズ除去後HTML由来の ns0 リンクから master言及を数えて reversePoint を算出
-    end
-```
-
-
 
 ## 変更履歴
 
+- 2026-05-12: 2-hop 抽出を **`app.services.wiki.extract.two_hop`** サブパッケージに分割（`models`・`quota`・`fetcher`・`ranker`・`reverse`・`filter`・`pipeline`）。公開 API（`extract_two_hop_relations` / `collapse_relations_by_canonical_article` / 型定義）は `__init__.py` で再エクスポート、import パスは従来どおり。テスト側のモンキーパッチも分割後の責務モジュール（`two_hop.quota` / `two_hop.filter`）に追従。
+- 2026-05-12: Wikipedia 連携コードを **`app.services.wiki`** パッケージに整理（`wiki/parser`・`wiki/api`・`wiki/limiter`・`wiki/extract`・`wiki/resolver` および `wiki/human.py`）。旧トップレベル `app.services.wiki_*` 単体モジュールは廃止。
+- 2026-05-12: `app.services.wiki.human` の **Redis キーを正規化タイトル基準**に統一（`_` と空白の表記ゆれでキャッシュミスしない）。ライブバッチの **`wiki_human_cache` はチャンク単位 1 `commit`**。タイトル単位ライブの **`Semaphore` 同時数を 8**。外向き HTTP は **`httpx.HTTPError`**、Redis `MGET` は **`redis.RedisError`** で捕捉してログ。
+- 2026-05-12: `app.services.wiki.human` に **共有 Redis / 共有 httpx AsyncClient**、**`is_human_by_title` の DB セッション統合**、**バッチライブ解決の `asyncio.Semaphore`**、Redis `MGET` 失敗時の **`logger.exception`**、否定的 Redis TTL の **1 日**化、アプリ **shutdown でクライアント `aclose`** を追加。
+- 2026-05-12: Wikipedia 検索 SSE の人物フィルタで **`wiki_human_cache` の DB 一括取得 + Redis `MGET`** を導入（`batch_human_checks_with_db_redis_priority`）。未キャッシュ分は既定で **`live_resolve_human_checks_wbget_batch`**（`wbgetentities` バッチ）。
+- 2026-05-12: **`GET /api/v1/wiki/is_human` を廃止**（未使用のため）。人物判定は `is_human_by_title` のみ（SSE 内部呼び出し）。仕様書 §7 を内部サービス記述に差し替え。
+- 2026-05-12: README を現行実装に同期（抽出はバックエンド SSE、キャッシュは `has_relations` 真のときのみ）。`doc/api.md` にフロントの初回選択仕様（8-3）と `PersonSearchOut` 例の整合を追記。
+- 2026-05-12: MediaWiki クライアントのレート制限ロック細分化・リトライ明示（`MAX_ATTEMPTS`）・例外・JSON 不正時の再試行・設定可能な **`WIKIPEDIA_USER_AGENT`**。 hatnote 抽出を BeautifulSoup 化、記事タイトル内 `:` は名前空間プレフィックス一覧による判定に変更。
+- 2026-05-12: API 仕様書を実装に同期（`/api/v1/health`・`/api/v1/ready` のみ。誤記の `/health` / `/api/health` を削除）。`WikiHuman` 例の `source` を `db_cache` に修正。`PersonOut` の `executed_as_master_at` を JSON 例に反映。`PersonSearchOut.has_relations` の意味を実装どおりに訂正。SSE 節にヘッダ・内部で `is_human_by_title` を直接呼ぶ旨を追記。
+- 2026-05-12: 人物判定のライブ取得を **Wikidata `wbgetentities`（`sites=jawiki` + `titles` のバッチ、`props=claims|sitelinks`）** へ寄せ、別名は **Wikipedia `query`（`redirects=1`）→ `wbgetentities(ids)`** で補完。PyPI パッケージ **`Wikidata`（`wikidata.client`）依存を削除**。`batch_human_checks_with_db_redis_priority` に任意の **`live_batch_resolver`** を追加し、2-hop 抽出は **`live_resolve_human_checks_wbget_batch`** をクォータ 1 単位／バッチで呼ぶ。
+- 2026-05-12: Wikipedia 検索・2-hop 抽出を **サーバー完結**に移行。進捗は **`GET /api/v1/wiki/person_search_sse`** / **`GET /api/v1/wiki/extract_relations_sse`**（SSE）で通知。フロントの Wikipedia 直叩きを廃止。
 - 2026-05-10: 2-hop 関連者抽出で、主体記事へのリダイレクト別名（例: `[[ひろゆき]]` → 西村博之）を前方スコア・結果リストから除外し、本人が関連者に載らないようにした。
 - 2026-05-10: `POST /api/v1/relation` で `ja.wikipedia.org` の記事 URL を転送解決し、`person` は正規記事 URL のみ upsert（転送ページ専用の人物行を作らない）。
 - 2026-05-10: `PersonOut` / `PersonSearchOut` に `executed_as_master_at`（主体者として関係保存を実行した日時、`person.executed_as_master_at`）を追加。`POST /api/v1/relation` のレスポンス内の人物オブジェクトにも含める。
-- 2026-05-10: `person` から `qid` / `wikidata_is_human` を廃止し、人物判定のキャッシュを新テーブル `wiki_human_cache` に分離。`PersonOut` / `PersonSearchOut` から `qid` を削除。`GET /api/v1/wiki/is_human` の DB 命中時 `source` を `person_db` → `db_cache` に変更（`person` テーブルへ判定の副作用で行を作らないようにし、人物以外を `person` に登録する事故を防止）
+- 2026-05-10: `person` から `qid` / `wikidata_is_human` を廃止し、人物判定のキャッシュを新テーブル `wiki_human_cache` に分離。`PersonOut` / `PersonSearchOut` から `qid` を削除。人物判定の DB 命中時 `source` を `person_db` → `db_cache` に変更（`person` テーブルへ判定の副作用で行を作らないようにし、人物以外を `person` に登録する事故を防止）
 - 2026-05-09: `POST /api/v1/relation` で `executed_master_url` 指定時、保存前に当該主体の forward と関連 reverse を削除してから upsert（同一主体で Wikipedia 再実行したときの旧関連を残さない）
 - 2026-05-09: parse HTML から `class` に `navbox` を含むブロックを除去（外部リンク直下のレーベルnavboxに含まれる名前リンクの混入防止）。wikitext は外部リンク節の終端境界を `{{Navboxes` 以外（`\n\n{{`・Normdaten・Category 等）にも拡張
 - 2026-05-09: parse HTML から `id="catlinks"`（カテゴリリンクブロック）を除去して参照・リンク抽出の対象外にする

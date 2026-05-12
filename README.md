@@ -66,11 +66,13 @@ gunicorn app.main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --workers
 
 API と画面のオリジンが分かれるときは、バックエンドの `CORS_ORIGINS` にユーザーが開くフロントの origin（例: `https://cdn.example.com`）を追加する。フロントのビルドでは `VITE_API_BASE_URL` に API のベース URL（例: `https://api.example.com/api`）を渡す。実行時にだけ URL を差し替えたい場合は `index.html` のコメント参照。詳細は [`doc/api.md`](doc/api.md) の「CDN・別オリジンでフロントを配信する場合」。
 
-## 人物名を入力するとWikipediaから該当する人物のページをリストアップする
-リストから選択した人物に関連する人物をリストアップする。フロントでは Wikipedia の wikitext・本文から内部リンクや表記の出現を数えてスコア化し、関連記事があれば最大2ホップまで同様に集計する。記事が人物かどうかはバックエンドの Wikidata 判定 API（結果は DB / Redis にキャッシュ）で補助する。
+## 人物名を入力すると Wikipedia から該当する人物のページをリストアップする
 
-## 人物のリストアップのアルゴリズム
-- 人物のページの wikitext 上のリンクや、本文上の表記出現などを候補ごとにカウントする
+リストから選択した人物に関連する人物をリストアップする。**Wikipedia の検索・本文/wikitext 解析・2-hop 集計・人物判定（Wikidata）はすべてバックエンド（FastAPI）で行い**、進捗は **Server-Sent Events（SSE）** でフロントに送る。ブラウザは MediaWiki / Wikidata に直接接続しない。人物判定結果は DB（`wiki_human_cache` 等）および Redis にキャッシュされる。
+
+## 人物のリストアップのアルゴリズム（サーバー側の概要）
+
+- 主体記事の wikitext 上のリンクや、本文上の表記出現などを候補ごとにカウントする
 - カウントした値を point とする（逆向きの共起も関連記事側のページを参照して加算する場合がある）
 - 候補に Wikipedia の記事ページがある場合はそのページも参照し、同様にカウントする（2ホップまで）
 
@@ -132,8 +134,11 @@ https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89
   - CCC (主体者:AAA 関連者:CCC のpoint + 主体者:CCC 関連者:AAA のpoint = 15)
   - ...
 
-## Wikipedia からの抽出およびリストアップの計算は主にフロントで行う（人物判定はバックエンド API とキャッシュを利用）
-## リストアップした結果は以下のフォーマットでサーバーAPIを実行してデータベースに保存する
+## Wikipedia からの抽出結果の保存
+
+抽出が終わったあと、フロントは **`POST /api/v1/relation`** で関係を保存する。抽出計算自体は上記どおりバックエンド SSE で完結している。
+
+## リストアップした結果は以下のフォーマットでサーバー API を実行してデータベースに保存する
 
 - API（FastAPI）: ボディは **JSON 配列**（`RelationIn[]`）。`master` / `slave` には `name` と `url` が必須、`title`（Wikipedia 表示名）は任意。再実行で主体の関係を置き換えるときはクエリ `executed_master_url` に主体の URL を付与する（詳細は [`doc/api.md`](doc/api.md)）。
 
@@ -180,25 +185,33 @@ Content-Type: application/json
 - `GET /api/v1/health`（プロセス生存確認）
 - `GET /api/v1/ready`（DB 接続確認）
 - `POST /api/v1/relation`（関係データの保存・upsert）
-- `GET /api/v1/person/search?name=...`（保存済み人物の検索）
+- `GET /api/v1/person/search?name=...`（保存済み人物の検索。`has_relations` は「主体者として保存を実行したか」）
 - `GET /api/v1/person/{person_id}/relations`（主体者の関連者を取得）
 - `GET /api/v1/person/{person_id}/relations_aggregate`（forward / reverse を集約した関連者一覧）
-- `GET /api/v1/wiki/is_human?title=...`（Wikidata による人物判定、キャッシュ利用）
+- `GET /api/v1/wiki/person_search_sse?q=...`（Wikipedia 検索 + 人物フィルタ、**SSE**）
+- `GET /api/v1/wiki/extract_relations_sse?title=...`（2-hop 抽出、**SSE**）
 
 - データベーススキーマ（PostgreSQL）の最新定義: [`doc/ddl_postgres.sql`](doc/ddl_postgres.sql)
 
-5. 「1. Wikipediaの検索結果を表示（名前に一致する人物ページのタイトルのリスト）」の中に既にサーバーに保存した情報があればサーバーの情報を元に関連する人物のリストアップを表示する（Wikipediaに対する負荷対策）
+5. Wikipedia の検索結果から人物を選択したとき、**`GET /api/v1/person/search` で突き合わせた `Person` の `has_relations` が true**（主体者として `POST /api/v1/relation` が実行済み）の場合のみ、初回から **`GET /api/v1/person/{id}/relations_aggregate`** の結果を表示する（Wikipedia への負荷対策としてのキャッシュ表示）。`has_relations` が false の人物（例: 関連者としてだけ DB にいる行）は初回は **`extract_relations_sse`** で Wikipedia 抽出する。検索語と記事タイトルがずれると一覧検索に載らないため、選択時に記事タイトルでも `person/search` を補う（実装は `frontend/src/lib/wikiPersonMatch.ts` 参照）。
 
-6. Wikipedia APIは呼出頻度にrate制限があるため留意する（APIマニュアル参照）
+6. Wikipedia API は呼び出し頻度にレート制限があるため留意する（[Wikimedia API エチケット](https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_API_Usage_Guidelines) および本リポジトリのサーバー側スロットリングを参照）。
 
-7. frontend画面構成
+7. フロント画面構成（React）
 
-- 主体者入力 + 送信
-- 該当する人物名一覧表示（リンク）
-- リンククリック→Wikipedia抽出 or 自サーバー処理（Wikipediaの場合は時間がかかるので通信中のプログレスバー表示）
-- 主体者及び関連者の表示（この時点で自サーバーにも自動保存）、「戻る」で「人物名入力 + 送信」に戻る
+- 主体者入力 + 検索
+- Wikipedia 検索結果の一覧（各行から「選択」）
+- 選択後: 上記 5 の条件で **集約 API（キャッシュ）** または **SSE 抽出** → 抽出経路では完了後に `POST /api/v1/relation` で自動保存。進捗はプログレス表示。
+- 「再実行」は常に **`extract_relations_sse`**。主体者として実行済みの人物には「キャッシュ再取得」（`relations_aggregate` のみ）を表示。
+- 「戻る」で検索画面に戻る
 
-8. デモ
+### フロントの単体テスト
+
+```bash
+cd frontend && npm test
+```
+
+## デモ
 
 - https://people-relation.pages.dev/
 

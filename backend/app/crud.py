@@ -26,6 +26,16 @@ def get_wiki_human_cache(db: Session, *, url: str) -> WikiHumanCache | None:
     return db.scalar(select(WikiHumanCache).where(WikiHumanCache.url == url_n))
 
 
+def list_wiki_human_cache_by_urls(db: Session, urls: list[str]) -> list[WikiHumanCache]:
+    """複数 URL を一度に `wiki_human_cache` から取得する（検索結果の人物判定バッチ用）。"""
+    if not urls:
+        return []
+    norms = [normalize_url(u) for u in urls]
+    uniq: list[str] = list(dict.fromkeys(norms))
+    rows = db.scalars(select(WikiHumanCache).where(WikiHumanCache.url.in_(uniq))).all()
+    return list(rows)
+
+
 def upsert_wiki_human_cache(
     db: Session,
     *,
