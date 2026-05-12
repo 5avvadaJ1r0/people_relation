@@ -1,6 +1,7 @@
 # 著名人関連者リストアップ
 
 ## インフラ構成
+
 - frontend
   - React + TypeScript + Vite
 
@@ -66,84 +67,64 @@ gunicorn app.main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --workers
 
 API と画面のオリジンが分かれるときは、バックエンドの `CORS_ORIGINS` にユーザーが開くフロントの origin（例: `https://cdn.example.com`）を追加する。フロントのビルドでは `VITE_API_BASE_URL` に API のベース URL（例: `https://api.example.com/api`）を渡す。実行時にだけ URL を差し替えたい場合は `index.html` のコメント参照。詳細は [`doc/api.md`](doc/api.md) の「CDN・別オリジンでフロントを配信する場合」。
 
-## 人物名を入力すると Wikipedia から該当する人物のページをリストアップする
+## 全体の流れ（サーバー中心）
 
-リストから選択した人物に関連する人物をリストアップする。**Wikipedia の検索・本文/wikitext 解析・2-hop 集計・人物判定（Wikidata）はすべてバックエンド（FastAPI）で行い**、進捗は **Server-Sent Events（SSE）** でフロントに送る。ブラウザは MediaWiki / Wikidata に直接接続しない。人物判定結果は DB（`wiki_human_cache` 等）および Redis にキャッシュされる。
+1. **検索（❶〜❷）**
+   ブラウザは **MediaWiki / Wikidata に直接アクセスしない**。
+   - Wikipedia 側の検索・各候補の **人物判定（Wikidata）** は **`GET /api/v1/wiki/person_search_sse`**（SSE）で実行され、進捗イベントが返る。
+   - あわせて保存済み DB 人物のあたり付け用に **`GET /api/v1/person/search`** を **並列**で呼ぶ（検索語が記事タイトルと一致しないとヒットしないため、人物選択後にタイトルでも検索し直して突き合わせる。実装は `frontend/src/lib/wikiPersonMatch.ts`）。
+
+2. **関連抽出（❸）**
+   主体記事の **本文・wikitext 解析・2-hop 集計・人物判定** はすべて **`GET /api/v1/wiki/extract_relations_sse`**（SSE）でバックエンドが実行する。クエリ `max_related` で関連者の上限（既定 100、上限 500）を指定できる。
+
+3. **キャッシュ**
+   人物判定結果は **`wiki_human_cache`** および **Redis** にキャッシュされる。保存済みの関係データは **PostgreSQL**。
+
+4. **保存**
+   SSE の抽出が終わったあと、フロントは **`POST /api/v1/relation`** で関係を保存する（クエリに主体の Wikipedia URL を付与して、同一主体の既存関係を置き換え可能。詳細は下記および [`doc/api.md`](doc/api.md)）。
 
 ## 人物のリストアップのアルゴリズム（サーバー側の概要）
 
-- 主体記事の wikitext 上のリンクや、本文上の表記出現などを候補ごとにカウントする
-- カウントした値を point とする（逆向きの共起も関連記事側のページを参照して加算する場合がある）
-- 候補に Wikipedia の記事ページがある場合はそのページも参照し、同様にカウントする（2ホップまで）
+実装は `app.services.wiki.extract.two_hop` がオーケストレーションする。**概念としては**次のとおり。
+
+- **検索フェーズ**
+  MediaWiki の検索結果をベースに、候補ごとに Wikidata で **人物かどうか** を判定し、人物のみを一覧に載せる（SSE で「検索結果の人物判定」進捗を通知）。
+
+- **抽出フェーズ（2-hop）**
+  1. 主体記事について本文・wikitext から候補リンクや表記を集計し、**主体→関連**方向のスコア（forward）を付ける。
+  2. 上位候補について関連側記事を参照し、**関連→主体**方向のスコア（reverse）を取り込む。
+  3. 同一 Wikipedia 記事に正規化できる関連は **合算**し、**合計スコア（totalPoint）** で並べ替える。
+  4. サーバーはこの結果を SSE の `extract_result` で返す（フロントは **主体値 / 関連値 / 合計値** として表示）。
 
 （例）「AAA」と入力した場合
 
-1. Wikipediaの検索結果を表示（名前に一致する人物ページのタイトルのリスト）
-2. リストから選択するとその人物ページ中に出現する人物名と出現回数(point) 抽出する
-https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89
+1. Wikipedia の検索結果を人物だけに絞って表示（名前に一致する人物ページのタイトルのリスト）
+2. リストから選択すると、その人物ページから関連人物とスコアを抽出する
+   https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89
 
-|主体者|関連者|point|
+|主体者|関連者|point（主体→関連の forward など）|
 |-|-|-|
 |AAA|BBB|10|
 |AAA|CCC|8|
-|AAA|DDD|7|
-|AAA|EEE|6|
-|AAA|FFF|6|
-|AAA|...|...|
+|…|…|…|
 
+3. 関連者に Wikipedia の人物記事がある場合は、その記事側から主体への言及も参照してスコアを足し合わせる（reverse）。
 
-3. 次に上記の「関連者」にWikipediaの人物ページが存在する場合（文中のアンカーで判定）同様に人物名と出現回数(point) 抽出する
-
-- BBB https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83
-|主体者|関連者|point|
-|-|-|-|
-|BBB|AAA|8|
-|BBB|...|...|
-
-- CCC https://ja.wikipedia.org/wiki/%E7%A8%B2%E5%9E%A3%E5%90%BE%E9%83%8E
-|主体者|関連者|point|
-|-|-|-|
-|CCC|AAA|7|
-|CCC|...|...|
-
-- DDD https://ja.wikipedia.org/wiki/%E9%A6%99%E5%8F%96%E6%85%8E%E5%90%BE
-|主体者|関連者|point|
-|-|-|-|
-|DDD|AAA|2|
-|DDD|...|...|
-
-- EEE https://ja.wikipedia.org/wiki/%E5%B7%A5%E8%97%A4%E9%9D%99%E9%A6%99
-|主体者|関連者|point|
-|-|-|-|
-|EEE|AAA|3|
-|EEE|...|...|
-
-- FFF https://ja.wikipedia.org/wiki/%E7%A8%B2%E5%9E%A3%E5%90%BE%E9%83%8E
-|主体者|関連者|point|
-|-|-|-|
-|FFF|AAA|1|
-|FFF|...|...|
-
-4. 最終的には`point`を元に主体者に対し、pointが高い順に関連者を表示する。
-
-- 主体者
-  - AAA
-
-- 関連者
-  - BBB (主体者:AAA 関連者:BBB のpoint + 主体者:BBB 関連者:AAA のpoint = 18)
-  - CCC (主体者:AAA 関連者:CCC のpoint + 主体者:CCC 関連者:AAA のpoint = 15)
-  - ...
+4. 最終表示は **totalPoint（forward + reverse を集約した値）** が高い順。画面上位は **`max_related`**（フロントは既定で 100 件）で切り詰める。
 
 ## Wikipedia からの抽出結果の保存
 
 抽出が終わったあと、フロントは **`POST /api/v1/relation`** で関係を保存する。抽出計算自体は上記どおりバックエンド SSE で完結している。
 
+- **クエリ `executed_master_url`**（任意）に **主体者の Wikipedia URL** を付けると、その主体を master とする既存の関係行を削除してから upsert する（「この主体で保存し直す」用途）。
+- ペイロードでは **主体→関連** のみならず、**関連→主体** 方向で `point > 0` のものもあわせて送る（README末尾の JSON 例のブロック参照）。
+
 ## リストアップした結果は以下のフォーマットでサーバー API を実行してデータベースに保存する
 
-- API（FastAPI）: ボディは **JSON 配列**（`RelationIn[]`）。`master` / `slave` には `name` と `url` が必須、`title`（Wikipedia 表示名）は任意。再実行で主体の関係を置き換えるときはクエリ `executed_master_url` に主体の URL を付与する（詳細は [`doc/api.md`](doc/api.md)）。
+- API（FastAPI）: ボディは **JSON 配列**（`RelationIn[]`）。`master` / `slave` には `name` と `url` が必須、`title`（Wikipedia 表示名）は任意。主体の関係を置き換えるときはクエリ **`executed_master_url`** に主体の URL を付与する（詳細は [`doc/api.md`](doc/api.md)）。
 
 ```http
-POST /api/v1/relation
+POST /api/v1/relation?executed_master_url=https%3A%2F%2Fja.wikipedia.org%2Fwiki%2F...
 Content-Type: application/json
 ```
 
@@ -185,25 +166,29 @@ Content-Type: application/json
 - `GET /api/v1/health`（プロセス生存確認）
 - `GET /api/v1/ready`（DB 接続確認）
 - `POST /api/v1/relation`（関係データの保存・upsert）
-- `GET /api/v1/person/search?name=...`（保存済み人物の検索。`has_relations` は「主体者として保存を実行したか」）
+- `GET /api/v1/person/search?name=...`（保存済み人物の検索。`has_relations` は「主体者として関係保存を実行したことがあるか」。レスポンスに `executed_as_master_at` あり）
 - `GET /api/v1/person/{person_id}/relations`（主体者の関連者を取得）
 - `GET /api/v1/person/{person_id}/relations_aggregate`（forward / reverse を集約した関連者一覧）
 - `GET /api/v1/wiki/person_search_sse?q=...`（Wikipedia 検索 + 人物フィルタ、**SSE**）
-- `GET /api/v1/wiki/extract_relations_sse?title=...`（2-hop 抽出、**SSE**）
+- `GET /api/v1/wiki/extract_relations_sse?title=...&max_related=...`（2-hop 抽出、**SSE**）
 
 - データベーススキーマ（PostgreSQL）の最新定義: [`doc/ddl_postgres.sql`](doc/ddl_postgres.sql)
 
-5. Wikipedia の検索結果から人物を選択したとき、**`GET /api/v1/person/search` で突き合わせた `Person` の `has_relations` が true**（主体者として `POST /api/v1/relation` が実行済み）の場合のみ、初回から **`GET /api/v1/person/{id}/relations_aggregate`** の結果を表示する（Wikipedia への負荷対策としてのキャッシュ表示）。`has_relations` が false の人物（例: 関連者としてだけ DB にいる行）は初回は **`extract_relations_sse`** で Wikipedia 抽出する。検索語と記事タイトルがずれると一覧検索に載らないため、選択時に記事タイトルでも `person/search` を補う（実装は `frontend/src/lib/wikiPersonMatch.ts` 参照）。
+### フロント画面の挙動（React）
 
-6. Wikipedia API は呼び出し頻度にレート制限があるため留意する（[Wikimedia API エチケット](https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_API_Usage_Guidelines) および本リポジトリのサーバー側スロットリングを参照）。
+- **❶ 主体者入力** — 検索語を入力して「検索」。
+- **❷ 主体者検索結果** — Wikipedia 側は **`person_search_sse`** の結果（SSE 進捗つき）。同一表示名が複数あるときは記事タイトルで区別表示。
+- **❸ 主体者・関連者** — 一覧から「選択」すると次を判定する。
+  - 保存済みの `Person` と突き合わせ、`GET /api/v1/person/search` の **`has_relations` が true**（主体として `POST /api/v1/relation` 実行済み）なら、初回から **`GET /api/v1/person/{id}/relations_aggregate`** で **キャッシュ表示**（Wikipedia 負荷軽減）。
+  - それ以外は **`extract_relations_sse`** で Wikipedia から抽出し、完了後 **`POST /api/v1/relation`** に **`executed_master_url`** 付きで自動保存。進捗はプログレス表示。
+- 関連者テーブルは **主体値（forward） / 関連値（reverse） / 合計値（total）**。既定で **「関連値 0 は除外」** がオン（オフにすると reverse が 0 の行も表示）。
+- **「再実行」** は常に **`extract_relations_sse`**（最新の Wikipedia から取り直し）。主体として保存済みの人物には **「キャッシュ再取得」**（`relations_aggregate` のみ）も表示。
+- 関連者行の **「主体者として実行」** で、その人物名を検索語に代入して ❷ の検索を実行できる。
+- **「戻る」** で検索画面に戻る。
 
-7. フロント画面構成（React）
+### Wikipedia API の利用について
 
-- 主体者入力 + 検索
-- Wikipedia 検索結果の一覧（各行から「選択」）
-- 選択後: 上記 5 の条件で **集約 API（キャッシュ）** または **SSE 抽出** → 抽出経路では完了後に `POST /api/v1/relation` で自動保存。進捗はプログレス表示。
-- 「再実行」は常に **`extract_relations_sse`**。主体者として実行済みの人物には「キャッシュ再取得」（`relations_aggregate` のみ）を表示。
-- 「戻る」で検索画面に戻る
+Wikipedia API は呼び出し頻度にレート制限があるため留意する（[Wikimedia API エチケット](https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_API_Usage_Guidelines) および本リポジトリのサーバー側スロットリングを参照）。
 
 ### フロントの単体テスト
 
