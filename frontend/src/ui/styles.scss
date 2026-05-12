@@ -409,6 +409,56 @@ input[type="text"]:focus-visible {
   cursor: pointer;
 }
 
+/* API 通信中: 画面中央スピナー（プログレスバーに加えて視認性を高める） */
+.busyOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  background: rgba(246, 248, 251, 0.22);
+}
+
+.busySpinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid rgba(37, 99, 235, 0.22);
+  border-top-color: var(--accent);
+  animation: busySpin 0.75s linear infinite;
+}
+
+.busyOverlayCaption {
+  max-width: min(92vw, 28rem);
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+@keyframes busySpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .busySpinner {
+    animation: busyPulse 1.25s ease-in-out infinite;
+  }
+
+  @keyframes busyPulse {
+    50% {
+      opacity: 0.55;
+    }
+  }
+}
+
 @media (min-width: 641px) {
   .detailMeta {
     flex-direction: row;

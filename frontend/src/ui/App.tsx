@@ -1,13 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiGetRelationsAggregate, apiPostRelations, apiSearchPerson } from "../lib/api";
-import { trackPrincipalInputPhase1, trackRelatedSearchPhase2 } from "../lib/analytics";
-import { consumeWikiExtractSse, consumeWikiPersonSearchSse, isAbortError } from "../lib/wikiSse";
+import {
+  apiGetRelationsAggregate,
+  apiPostRelations,
+  apiSearchPerson,
+} from "../lib/api";
+import {
+  trackPrincipalInputPhase1,
+  trackRelatedSearchPhase2,
+} from "../lib/analytics";
+import {
+  consumeWikiExtractSse,
+  consumeWikiPersonSearchSse,
+  isAbortError,
+} from "../lib/wikiSse";
 import {
   displayPersonNameFromWikiTitle,
   isPrincipalRelationsCacheSource,
   pickServerPersonForWikiTitle,
 } from "../lib/wikiPersonMatch";
-import type { ApiPerson, RelationIn, RelationView, WikiSearchItem } from "../lib/types";
+import type {
+  ApiPerson,
+  RelationIn,
+  RelationView,
+  WikiSearchItem,
+} from "../lib/types";
 import urlQrCodeSvg from "../assets/images/svg/url-qr-code.svg";
 
 type Selected = {
@@ -18,7 +34,9 @@ type Selected = {
 /** Wikipedia 経由で取得する関連者の最大件数（抽出パラメータと見出し表示で共通） */
 const WIKI_MAX_RELATED_DISPLAY = 100;
 
-const formatExecutedAsMasterAt = (iso: string | null | undefined): string | null => {
+const formatExecutedAsMasterAt = (
+  iso: string | null | undefined,
+): string | null => {
   if (iso == null || iso === "") return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
@@ -66,12 +84,21 @@ export const App = () => {
     return m;
   }, [wikiResults]);
 
-  const [progress, setProgress] = useState<{ phase: string; done: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{
+    phase: string;
+    done: number;
+    total: number;
+  } | null>(null);
   const isSearchProgress = progress?.phase === "検索結果の人物判定";
   const progressPct = useMemo(() => {
     if (!progress) return 0;
     if (progress.total <= 0) return 0;
     return Math.round((progress.done / progress.total) * 100);
+  }, [progress]);
+
+  const busyOverlayCaption = useMemo(() => {
+    if (!progress) return "処理中…";
+    return `${progress.phase}（${progress.done}/${progress.total}）`;
   }, [progress]);
 
   const [masterLabel, setMasterLabel] = useState<string>("");
@@ -112,6 +139,15 @@ export const App = () => {
       window.clearTimeout(id2);
     };
   }, [selected, relations.length, error, progress?.phase]);
+
+  useEffect(() => {
+    if (!busy) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [busy]);
 
   const clearDetailState = () => {
     setSelected(null);
@@ -169,7 +205,10 @@ export const App = () => {
         .then((msg) => {
           if (isStaleSearch()) return;
           setWikiResults(msg.wiki);
-          setWikiEmptyMessage(msg.emptyMessage ?? (msg.wiki.length === 0 ? "該当人物はいません" : null));
+          setWikiEmptyMessage(
+            msg.emptyMessage ??
+              (msg.wiki.length === 0 ? "該当人物はいません" : null),
+          );
           wikiResultCount = msg.wiki.length;
         })
         .catch((e: unknown) => {
@@ -190,7 +229,9 @@ export const App = () => {
           if (isAbortError(e) || isStaleSearch()) return;
           setServerMatches([]);
           serverMatchCount = 0;
-          setError((prev) => prev ?? (e instanceof Error ? e.message : String(e)));
+          setError(
+            (prev) => prev ?? (e instanceof Error ? e.message : String(e)),
+          );
         });
 
       await Promise.all([wikiP, serverP]);
@@ -218,7 +259,7 @@ export const App = () => {
   const ensureServerPersonForWikiTitle = async (
     wikiTitle: string,
     currentMatches: ApiPerson[],
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<ApiPerson | undefined> => {
     const hit0 = pickServerPersonForWikiTitle(wikiTitle, currentMatches);
     if (hit0) return hit0;
@@ -227,7 +268,7 @@ export const App = () => {
       ...new Set(
         [displayPersonNameFromWikiTitle(wikiTitle), wikiTitle]
           .map((q) => q.trim())
-          .filter((q) => q.length > 0)
+          .filter((q) => q.length > 0),
       ),
     ];
 
@@ -262,7 +303,7 @@ export const App = () => {
           reversePoint: r.reverse_point,
           totalPoint: r.total_point,
           hasWikiPage: true,
-        }))
+        })),
       );
       trackRelatedSearchPhase2({
         source: "server",
@@ -278,7 +319,10 @@ export const App = () => {
     }
   };
 
-  const extractFromWikipedia = async (title: string, parentSession?: number) => {
+  const extractFromWikipedia = async (
+    title: string,
+    parentSession?: number,
+  ) => {
     const session = parentSession ?? bumpDetailSession();
 
     extractAbortRef.current?.abort();
@@ -290,15 +334,22 @@ export const App = () => {
     setError(null);
     devLog("[App] extractFromWikipedia start", { title });
     try {
-      const { master, relations } = await consumeWikiExtractSse(title, WIKI_MAX_RELATED_DISPLAY, {
-        signal: extractSignal,
-        onProgress: (p) => {
-          if (session !== detailSessionRef.current) return;
-          setProgress(p);
+      const { master, relations } = await consumeWikiExtractSse(
+        title,
+        WIKI_MAX_RELATED_DISPLAY,
+        {
+          signal: extractSignal,
+          onProgress: (p) => {
+            if (session !== detailSessionRef.current) return;
+            setProgress(p);
+          },
         },
-      });
+      );
       if (session !== detailSessionRef.current) return;
-      devLog("[App] extractFromWikipedia done", { masterTitle: master.title, relations: relations.length });
+      devLog("[App] extractFromWikipedia done", {
+        masterTitle: master.title,
+        relations: relations.length,
+      });
 
       setMasterLabel(master.title ?? master.name);
       setSource("wikipedia");
@@ -319,7 +370,11 @@ export const App = () => {
         });
         if (r.reversePoint > 0) {
           payloadRaw.push({
-            master: { name: r.slave.name, title: r.slave.title, url: r.slave.url },
+            master: {
+              name: r.slave.name,
+              title: r.slave.title,
+              url: r.slave.url,
+            },
             slave: { name: master.name, title: master.title, url: master.url },
             point: r.reversePoint,
           });
@@ -338,7 +393,8 @@ export const App = () => {
       const posted = await apiPostRelations(payload, master.url);
       if (session !== detailSessionRef.current) return;
       const executedAt =
-        posted.find((x) => x.master.url === master.url)?.master.executed_as_master_at ??
+        posted.find((x) => x.master.url === master.url)?.master
+          .executed_as_master_at ??
         posted[0]?.master.executed_as_master_at ??
         null;
       setMasterExecutedAt(executedAt ?? null);
@@ -360,247 +416,311 @@ export const App = () => {
     const session = bumpDetailSession();
     clearDetailState();
 
-    const m = await ensureServerPersonForWikiTitle(item.title, serverMatches, ensureAc.signal);
+    const m = await ensureServerPersonForWikiTitle(
+      item.title,
+      serverMatches,
+      ensureAc.signal,
+    );
     if (session !== detailSessionRef.current) return;
 
     const sel: Selected = { wiki: item, serverPerson: m };
     setSelected(sel);
 
     if (m != null && isPrincipalRelationsCacheSource(m)) {
-      devLog("[App] onSelect -> server", { wikiTitle: item.title, serverId: m.id });
+      devLog("[App] onSelect -> server", {
+        wikiTitle: item.title,
+        serverId: m.id,
+      });
       await loadFromServer(m, session);
       return;
     }
-    devLog("[App] onSelect -> wikipedia", { wikiTitle: item.title, serverPersonId: m?.id });
+    devLog("[App] onSelect -> wikipedia", {
+      wikiTitle: item.title,
+      serverPersonId: m?.id,
+    });
     await extractFromWikipedia(item.title, session);
   };
 
   return (
-    <div className="container">
-      <div className="header">
-        <div>
-          <div className="title">著名人関連者リストアップ</div>
-          <div className="subtitle">ネット上から著名人の関連者をリストアップするツールです</div>
+    <>
+      <div className="container">
+        <div className="header">
+          <div>
+            <div className="title">著名人関連者リストアップ</div>
+            <div className="subtitle">
+              ネット上から著名人の関連者をリストアップするツールです
+            </div>
+          </div>
+          <div className="headerQr" aria-hidden="true">
+            <img src={urlQrCodeSvg} alt="" width={68} height={68} />
+          </div>
         </div>
-        <div className="headerQr" aria-hidden="true">
-          <img src={urlQrCodeSvg} alt="" width={68} height={68} />
-        </div>
-      </div>
 
-      <div className="grid">
-        <div className="card">
-          <h2>❶ 主体者入力</h2>
-          <div className="row">
-            <div className="textInputWrap">
-              <input
-                ref={queryInputRef}
-                id="query"
-                name="query"
-                type="text"
-                value={query}
-                placeholder="著名人の氏名を入力してください"
-                className={query.trim().length > 0 ? "hasRightIcon" : ""}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") onSearch();
-                }}
-              />
-              {query.trim().length > 0 && (
-                <button
-                  type="button"
-                  className="textInputRightIcon"
-                  aria-label="入力をクリア"
-                  title="クリア"
-                  onClick={() => {
-                    setQuery("");
-                    window.setTimeout(() => queryInputRef.current?.focus(), 0);
+        <div className="grid">
+          <div className="card">
+            <h2>❶ 主体者入力</h2>
+            <div className="row">
+              <div className="textInputWrap">
+                <input
+                  ref={queryInputRef}
+                  id="query"
+                  name="query"
+                  type="text"
+                  value={query}
+                  placeholder="著名人の氏名を入力してください"
+                  className={query.trim().length > 0 ? "hasRightIcon" : ""}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") onSearch();
                   }}
+                />
+                {query.trim().length > 0 && (
+                  <button
+                    type="button"
+                    className="textInputRightIcon"
+                    aria-label="入力をクリア"
+                    title="クリア"
+                    onClick={() => {
+                      setQuery("");
+                      window.setTimeout(
+                        () => queryInputRef.current?.focus(),
+                        0,
+                      );
+                    }}
+                  >
+                    <svg
+                      viewBox="0 0 20 20"
+                      width="16"
+                      height="16"
+                      aria-hidden="true"
+                      focusable="false"
+                    >
+                      <path
+                        d="M6.2 6.2a1 1 0 0 1 1.4 0L10 8.6l2.4-2.4a1 1 0 1 1 1.4 1.4L11.4 10l2.4 2.4a1 1 0 0 1-1.4 1.4L10 11.4l-2.4 2.4a1 1 0 0 1-1.4-1.4L8.6 10 6.2 7.6a1 1 0 0 1 0-1.4Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <button
+                className="primary"
+                disabled={busy || query.trim().length === 0}
+                onClick={() => void onSearch()}
+              >
+                検索
+              </button>
+            </div>
+
+            {error && (
+              <div style={{ marginTop: 10 }} className="danger">
+                {error}
+              </div>
+            )}
+
+            {progress && isSearchProgress && (
+              <div className="progressWrap">
+                <div
+                  className="muted"
+                  style={{ marginBottom: 6, fontSize: 12 }}
                 >
-                  <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false">
-                    <path
-                      d="M6.2 6.2a1 1 0 0 1 1.4 0L10 8.6l2.4-2.4a1 1 0 1 1 1.4 1.4L11.4 10l2.4 2.4a1 1 0 0 1-1.4 1.4L10 11.4l-2.4 2.4a1 1 0 0 1-1.4-1.4L8.6 10 6.2 7.6a1 1 0 0 1 0-1.4Z"
-                      fill="currentColor"
-                    />
-                  </svg>
-                </button>
+                  {progress.phase}（{progress.done}/{progress.total}）
+                </div>
+                <div className="progress">
+                  <div className="bar" style={{ width: `${progressPct}%` }} />
+                </div>
+              </div>
+            )}
+
+            <h2 style={{ marginTop: 14 }}>❷ 主体者検索結果</h2>
+            <div className="list">
+              {wikiResults.map((r) => {
+                const displayName = displayPersonNameFromWikiTitle(r.title);
+                const isAmbiguous =
+                  (wikiDisplayNameCounts.get(displayName) ?? 0) >= 2;
+                const label = isAmbiguous ? r.title : displayName;
+                return (
+                  <div key={r.pageid} className="item">
+                    <div className="itemTitle">
+                      <div style={{ fontWeight: 700 }}>{label}</div>
+                    </div>
+                    <div
+                      style={{ display: "flex", gap: 8, alignItems: "center" }}
+                    >
+                      <button disabled={busy} onClick={() => onSelect(r)}>
+                        選択
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {wikiResults.length === 0 && !hasSearched && (
+                <div className="subtitle">まだ検索していません。</div>
+              )}
+              {wikiResults.length === 0 && hasSearched && wikiEmptyMessage && (
+                <div className="subtitle">{wikiEmptyMessage}</div>
               )}
             </div>
-            <button
-              className="primary"
-              disabled={busy || query.trim().length === 0}
-              onClick={() => void onSearch()}
-            >
-              検索
-            </button>
-          </div>
 
-          {error && (
-            <div style={{ marginTop: 10 }} className="danger">
-              {error}
-            </div>
-          )}
-
-          {progress && isSearchProgress && (
-            <div className="progressWrap">
-              <div className="muted" style={{ marginBottom: 6, fontSize: 12 }}>
-                {progress.phase}（{progress.done}/{progress.total}）
-              </div>
-              <div className="progress">
-                <div className="bar" style={{ width: `${progressPct}%` }} />
-              </div>
-            </div>
-          )}
-
-          <h2 style={{ marginTop: 14 }}>❷ 主体者検索結果</h2>
-          <div className="list">
-            {wikiResults.map((r) => {
-              const displayName = displayPersonNameFromWikiTitle(r.title);
-              const isAmbiguous = (wikiDisplayNameCounts.get(displayName) ?? 0) >= 2;
-              const label = isAmbiguous ? r.title : displayName;
-              return (
-                <div key={r.pageid} className="item">
-                  <div className="itemTitle">
-                    <div style={{ fontWeight: 700 }}>{label}</div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <button disabled={busy} onClick={() => onSelect(r)}>
-                      選択
-                    </button>
-                  </div>
+            {progress && !isSearchProgress && (
+              <div className="progressWrap">
+                <div
+                  className="muted"
+                  style={{ marginBottom: 6, fontSize: 12 }}
+                >
+                  {progress.phase}（{progress.done}/{progress.total}）
                 </div>
-              );
-            })}
-            {wikiResults.length === 0 && !hasSearched && <div className="subtitle">まだ検索していません。</div>}
-            {wikiResults.length === 0 && hasSearched && wikiEmptyMessage && (
-              <div className="subtitle">{wikiEmptyMessage}</div>
+                <div className="progress">
+                  <div className="bar" style={{ width: `${progressPct}%` }} />
+                </div>
+              </div>
             )}
           </div>
 
-          {progress && !isSearchProgress && (
-            <div className="progressWrap">
-              <div className="muted" style={{ marginBottom: 6, fontSize: 12 }}>
-                {progress.phase}（{progress.done}/{progress.total}）
-              </div>
-              <div className="progress">
-                <div className="bar" style={{ width: `${progressPct}%` }} />
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="card" ref={detailRef}>
-          <h2>
-            ❸ 主体者・関連者
-            <span className="subtitle">（最大上位{WIKI_MAX_RELATED_DISPLAY}名のみ表示）</span>
-          </h2>
-          {selected ? (
-            <div className="detailMeta">
-              <div className="detailMetaItem detailMetaItemMaster">
-                <span className="detailMetaLabel">主体者</span>
-                <div className="detailMetaMasterMain">
-                  <span className="pill">{masterLabel || selected.wiki.title}</span>
-                  <label className="detailMetaCheckboxLabel">
-                    <input
-                      type="checkbox"
-                      checked={excludeZeroReverse}
-                      onChange={(e) => setExcludeZeroReverse(e.target.checked)}
-                    />
-                    <span>関連値0は除外</span>
-                  </label>
-                </div>
-              </div>
-              <div className="detailMetaGroup">
-                <div className="detailMetaItem">
-                  <span className="detailMetaLabel">表示元</span>
-                  <span className="pill">
-                    {source === "server" ? "キャッシュ" : source === "wikipedia" ? "最新版" : "-"}
-                  </span>
-                </div>
-                {masterExecutedAtLabel && (
-                  <div className="detailMetaItem">
-                    <span className="detailMetaLabel">最終更新</span>
-                    <span className="pill">{masterExecutedAtLabel}</span>
+          <div className="card" ref={detailRef}>
+            <h2>
+              ❸ 主体者・関連者
+              <span className="subtitle">
+                （最大上位{WIKI_MAX_RELATED_DISPLAY}名のみ表示）
+              </span>
+            </h2>
+            {selected ? (
+              <div className="detailMeta">
+                <div className="detailMetaItem detailMetaItemMaster">
+                  <span className="detailMetaLabel">主体者</span>
+                  <div className="detailMetaMasterMain">
+                    <span className="pill">
+                      {masterLabel || selected.wiki.title}
+                    </span>
+                    <label className="detailMetaCheckboxLabel">
+                      <input
+                        type="checkbox"
+                        checked={excludeZeroReverse}
+                        onChange={(e) =>
+                          setExcludeZeroReverse(e.target.checked)
+                        }
+                      />
+                      <span>関連値0は除外</span>
+                    </label>
                   </div>
-                )}
+                </div>
+                <div className="detailMetaGroup">
+                  <div className="detailMetaItem">
+                    <span className="detailMetaLabel">表示元</span>
+                    <span className="pill">
+                      {source === "server"
+                        ? "キャッシュ"
+                        : source === "wikipedia"
+                          ? "最新版"
+                          : "-"}
+                    </span>
+                  </div>
+                  {masterExecutedAtLabel && (
+                    <div className="detailMetaItem">
+                      <span className="detailMetaLabel">最終更新</span>
+                      <span className="pill">{masterExecutedAtLabel}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="subtitle" style={{ marginBottom: 10 }}>
-              主体者検索結果から人物を選択してください。
-            </div>
-          )}
+            ) : (
+              <div className="subtitle" style={{ marginBottom: 10 }}>
+                主体者検索結果から人物を選択してください。
+              </div>
+            )}
 
-          {relations.length > 0 && displayRelations.length > 0 ? (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>関連者</th>
-                  <th style={{ textAlign: "right" }}></th>
-                  <th style={{ width: 80, textAlign: "right" }}>主体値</th>
-                  <th style={{ width: 80, textAlign: "right" }}>関連値</th>
-                  <th style={{ width: 80, textAlign: "right" }}>合計値</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayRelations.map((r) => (
-                  <tr key={`${r.slave.url}-${r.totalPoint}-${r.forwardPoint}`}>
-                    <td>
-                      <a href={r.slave.url} target="_blank" rel="noreferrer">
-                        {r.slave.name}
-                      </a>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <button
-                        type="button"
-                        className="principalRunAsMasterBtn"
-                        disabled={busy}
-                        onClick={() => {
-                          const q = (r.slave.title ?? r.slave.name).trim();
-                          setQuery(q);
-                          void onSearch(q);
-                        }}
-                      >
-                        主体者として実行
-                      </button>
-                    </td>
-                    <td style={{ textAlign: "right" }}>{r.forwardPoint}</td>
-                    <td style={{ textAlign: "right" }}>{r.reversePoint}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <span className="pill">{r.totalPoint}</span>
-                    </td>
+            {relations.length > 0 && displayRelations.length > 0 ? (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>関連者</th>
+                    <th style={{ textAlign: "right" }}></th>
+                    <th style={{ width: 80, textAlign: "right" }}>主体値</th>
+                    <th style={{ width: 80, textAlign: "right" }}>関連値</th>
+                    <th style={{ width: 80, textAlign: "right" }}>合計値</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : relations.length > 0 ? (
-            <div className="subtitle">関連値0は除外のため、表示できる関連者がありません。チェックを外すと一覧できます。</div>
-          ) : (
-            <div className="subtitle">結果はまだありません</div>
-          )}
+                </thead>
+                <tbody>
+                  {displayRelations.map((r) => (
+                    <tr
+                      key={`${r.slave.url}-${r.totalPoint}-${r.forwardPoint}`}
+                    >
+                      <td>
+                        <a href={r.slave.url} target="_blank" rel="noreferrer">
+                          {r.slave.name}
+                        </a>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <button
+                          type="button"
+                          className="principalRunAsMasterBtn"
+                          disabled={busy}
+                          onClick={() => {
+                            const q = (r.slave.title ?? r.slave.name).trim();
+                            setQuery(q);
+                            void onSearch(q);
+                          }}
+                        >
+                          主体者として実行
+                        </button>
+                      </td>
+                      <td style={{ textAlign: "right" }}>{r.forwardPoint}</td>
+                      <td style={{ textAlign: "right" }}>{r.reversePoint}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <span className="pill">{r.totalPoint}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : relations.length > 0 ? (
+              <div className="subtitle">
+                関連値0は除外のため、表示できる関連者がありません。チェックを外すと一覧できます。
+              </div>
+            ) : (
+              <div className="subtitle">結果はまだありません</div>
+            )}
 
-          {selected && (
-            <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
-              <button disabled={busy} onClick={() => resetDetail()}>
-                戻る
-              </button>
-              {isPrincipalRelationsCacheSource(selected.serverPerson) && (
+            {selected && (
+              <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+                <button disabled={busy} onClick={() => resetDetail()}>
+                  戻る
+                </button>
+                {isPrincipalRelationsCacheSource(selected.serverPerson) && (
+                  <button
+                    className="primary"
+                    disabled={busy}
+                    onClick={() => loadFromServer(selected.serverPerson!)}
+                    title="キャッシュ再表示"
+                  >
+                    キャッシュ再取得
+                  </button>
+                )}
                 <button
                   className="primary"
                   disabled={busy}
-                  onClick={() => loadFromServer(selected.serverPerson!)}
-                  title="キャッシュ再表示"
+                  onClick={() => extractFromWikipedia(selected.wiki.title)}
                 >
-                  キャッシュ再取得
+                  再実行
                 </button>
-              )}
-              <button className="primary" disabled={busy} onClick={() => extractFromWikipedia(selected.wiki.title)}>
-                再実行
-              </button>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+
+      {busy ? (
+        <div
+          className="busyOverlay"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+          aria-label={busyOverlayCaption}
+        >
+          <div className="busySpinner" aria-hidden />
+          <div className="busyOverlayCaption">{busyOverlayCaption}</div>
+        </div>
+      ) : null}
+    </>
   );
 };
-
