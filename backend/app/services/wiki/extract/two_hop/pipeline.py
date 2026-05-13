@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 from app import crud
 from app.services.wiki.api.ja_mediawiki import JaWikipediaClient
 from app.services.wiki.extract.two_hop.fetcher import (
@@ -29,6 +31,7 @@ async def extract_two_hop_relations(
     master_title: str,
     master_name: str,
     max_related: int,
+    db: Session,
     on_progress: ProgressCb = None,
 ) -> dict[str, Any]:
     master_url = crud.wiki_ja_article_url(master_title)
@@ -55,6 +58,7 @@ async def extract_two_hop_relations(
         forward_keep=forward_keep,
         max_related=max_related,
         on_progress=on_progress,
+        db=db,
     )
 
     out, reverse_checked_count, reverse_checked_sample = await collect_reverse_scores(
@@ -81,7 +85,7 @@ async def extract_two_hop_relations(
             "wiki reverse checked none master=%s total=%s", master_title, len(ranked)
         )
 
-    collapsed = await collapse_relations_by_canonical_article(wiki, out)
+    collapsed = await collapse_relations_by_canonical_article(wiki, out, db=db)
     collapsed.sort(key=lambda x: int(x.get("totalPoint") or 0), reverse=True)
 
     without_self = [

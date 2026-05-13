@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app import crud
+from app.db import SessionLocal
 from app.schemas import HumanCheck
 from app.services.wiki.extract.two_hop import (
     ForwardCandidate,
@@ -269,7 +270,11 @@ def test_collapse_relations_merges_rows_with_same_resolved_url(
             },
         ]
 
-        out = await collapse_relations_by_canonical_article(wiki, rows)
+        db = SessionLocal()
+        try:
+            out = await collapse_relations_by_canonical_article(wiki, rows, db=db)
+        finally:
+            db.close()
         assert len(out) == 1
         first = out[0]
         assert first.get("forwardPoint") == 5

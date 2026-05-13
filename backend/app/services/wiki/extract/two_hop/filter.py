@@ -6,6 +6,8 @@ import asyncio
 import logging
 from urllib.parse import unquote
 
+from sqlalchemy.orm import Session
+
 from app import crud
 from app.schemas import HumanCheck
 from app.services.wiki.api.ja_mediawiki import JaWikipediaClient
@@ -65,6 +67,7 @@ async def filter_forward_humans(
     forward_keep: int,
     max_related: int,
     on_progress: ProgressCb,
+    db: Session,
 ) -> list[ForwardCandidate]:
     human_check_limit = min(2000, max(350, max_related * 12))
     human_check_min_point = 1
@@ -86,9 +89,14 @@ async def filter_forward_humans(
         batch = ranked_with_href[i : i + HUMAN_CHECK_BATCH_SIZE]
         titles = [decode_wiki_title_from_href(str(r.get("href") or "")) for r in batch]
         try:
+
+            async def _quota_batch(ts: list[str]) -> list[HumanCheck]:
+                return await quota_batch_human_checks(ts, db=db)
+
             checks = await batch_human_checks_with_db_redis_priority(
                 titles,
-                live_batch_resolver=quota_batch_human_checks,
+                db=db,
+                live_batch_resolver=_quota_batch,
             )
         except asyncio.CancelledError:
             raise
@@ -121,7 +129,10 @@ async def filter_forward_humans(
 
 
 async def collapse_relations_by_canonical_article(
-    wiki: SupportsResolveCanonicalTitles, rows: list[WikiRelationRow]
+    wiki: SupportsResolveCanonicalTitles,
+    rows: list[WikiRelationRow],
+    *,
+    db: Session,
 ) -> list[WikiRelationRow]:
     with_page = [
         r for r in rows if r.get("hasWikiPage") and (r.get("slave") or {}).get("url")
@@ -192,9 +203,14 @@ async def collapse_relations_by_canonical_article(
             ).strip()
             for r in batch
         ]
+
+        async def _quota_batch(ts: list[str]) -> list[HumanCheck]:
+            return await quota_batch_human_checks(ts, db=db)
+
         checks = await batch_human_checks_with_db_redis_priority(
             titles,
-            live_batch_resolver=quota_batch_human_checks,
+            db=db,
+            live_batch_resolver=_quota_batch,
         )
         results = tuple(c.source != "unknown" and bool(c.is_human) for c in checks)
         for r, hx in zip(batch, results):

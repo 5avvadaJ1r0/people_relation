@@ -9,9 +9,9 @@ from typing import Any, cast
 
 import httpx
 import redis
+from sqlalchemy.orm import Session
 
 from app import crud
-from app.db import SessionLocal
 from app.schemas import HumanCheck
 from app.settings import settings
 
@@ -336,13 +336,17 @@ async def _human_flags_for_qids(qids: list[str]) -> dict[str, bool | None]:
     return flags
 
 
-async def _live_human_checks_for_titles(stripped_titles: list[str]) -> list[HumanCheck]:
+async def _live_human_checks_for_titles(
+    stripped_titles: list[str], *, db: Session
+) -> list[HumanCheck]:
     """
     DB / Redis は見ない。Wikidata ``wbgetentities``（sites+titles、バッチ）を主とし、
     未解決分は Wikipedia ``query`` → ``wbgetentities``（ids）で P31 を補完する。
 
     成功判定分は Redis / ``wiki_human_cache`` に書き込む。Wikidata HTTP 全体失敗時は
     ``source=unknown`` で **キャッシュしない**。
+
+    ``db`` は呼び出し側（例: FastAPI ``Depends(get_db)``）のライフサイクルに従う。閉じない。
     """
     if not stripped_titles:
         return []
@@ -375,126 +379,125 @@ async def _live_human_checks_for_titles(stripped_titles: list[str]) -> list[Huma
                 qids_for_flags.append(row[0])
         human_by_qid = await _human_flags_for_qids(qids_for_flags)
 
-        db = SessionLocal()
         db_dirty = False
-        try:
-            for t in chunk:
-                if not t:
-                    out.append(
-                        HumanCheck(
-                            title="",
-                            qid=None,
-                            is_human=False,
-                            source="unknown",
-                        )
+        for t in chunk:
+            if not t:
+                out.append(
+                    HumanCheck(
+                        title="",
+                        qid=None,
+                        is_human=False,
+                        source="unknown",
                     )
-                    continue
+                )
+                continue
 
-                key = _cache_key(t)
-                nk = _norm_title_key(t)
-                if nk in by_site:
-                    qid, is_human, canon = by_site[nk]
-                    url_canon = crud.wiki_ja_article_url(canon)
-                    hc = HumanCheck(
-                        title=canon, qid=qid, is_human=is_human, source="live"
-                    )
-                    ttl = (
-                        REDIS_IS_HUMAN_POSITIVE_TTL_SEC
-                        if is_human
-                        else REDIS_IS_HUMAN_NEGATIVE_TTL_SEC
-                    )
-                    r.setex(
-                        key,
-                        ttl,
-                        json.dumps({"qid": qid, "is_human": is_human}),
-                    )
-                    crud.upsert_wiki_human_cache(
-                        db,
-                        title=canon,
-                        url=url_canon,
-                        qid=qid,
-                        is_human=is_human,
-                    )
-                    db_dirty = True
-                    out.append(hc)
-                    continue
-
-                wq, wcanon, wp_missing = wp_map.get(nk, (None, t, True))
-                if not wq:
-                    hc = HumanCheck(
-                        title=wcanon, qid=None, is_human=False, source="live"
-                    )
-                    r.setex(
-                        key,
-                        REDIS_IS_HUMAN_NEGATIVE_TTL_SEC,
-                        json.dumps({"qid": None, "is_human": False}),
-                    )
-                    if (not wp_missing) and wcanon.strip():
-                        crud.upsert_wiki_human_cache(
-                            db,
-                            title=wcanon,
-                            url=crud.wiki_ja_article_url(wcanon),
-                            qid=None,
-                            is_human=False,
-                        )
-                        db_dirty = True
-                    out.append(hc)
-                    continue
-
-                is_human_wd = human_by_qid.get(wq)
-                if is_human_wd is None:
-                    out.append(
-                        HumanCheck(
-                            title=wcanon, qid=wq, is_human=False, source="unknown"
-                        )
-                    )
-                    continue
-
-                url_canon = crud.wiki_ja_article_url(wcanon)
+            key = _cache_key(t)
+            nk = _norm_title_key(t)
+            if nk in by_site:
+                qid, is_human, canon = by_site[nk]
+                url_canon = crud.wiki_ja_article_url(canon)
                 hc = HumanCheck(
-                    title=wcanon,
-                    qid=wq,
-                    is_human=is_human_wd,
-                    source="live",
+                    title=canon, qid=qid, is_human=is_human, source="live"
                 )
                 ttl = (
                     REDIS_IS_HUMAN_POSITIVE_TTL_SEC
-                    if is_human_wd
+                    if is_human
                     else REDIS_IS_HUMAN_NEGATIVE_TTL_SEC
                 )
                 r.setex(
                     key,
                     ttl,
-                    json.dumps({"qid": wq, "is_human": is_human_wd}),
+                    json.dumps({"qid": qid, "is_human": is_human}),
                 )
                 crud.upsert_wiki_human_cache(
                     db,
-                    title=wcanon,
+                    title=canon,
                     url=url_canon,
-                    qid=wq,
-                    is_human=is_human_wd,
+                    qid=qid,
+                    is_human=is_human,
                 )
                 db_dirty = True
                 out.append(hc)
-            if db_dirty:
-                db.commit()
-        finally:
-            db.close()
+                continue
+
+            wq, wcanon, wp_missing = wp_map.get(nk, (None, t, True))
+            if not wq:
+                hc = HumanCheck(
+                    title=wcanon, qid=None, is_human=False, source="live"
+                )
+                r.setex(
+                    key,
+                    REDIS_IS_HUMAN_NEGATIVE_TTL_SEC,
+                    json.dumps({"qid": None, "is_human": False}),
+                )
+                if (not wp_missing) and wcanon.strip():
+                    crud.upsert_wiki_human_cache(
+                        db,
+                        title=wcanon,
+                        url=crud.wiki_ja_article_url(wcanon),
+                        qid=None,
+                        is_human=False,
+                    )
+                    db_dirty = True
+                out.append(hc)
+                continue
+
+            is_human_wd = human_by_qid.get(wq)
+            if is_human_wd is None:
+                out.append(
+                    HumanCheck(
+                        title=wcanon, qid=wq, is_human=False, source="unknown"
+                    )
+                )
+                continue
+
+            url_canon = crud.wiki_ja_article_url(wcanon)
+            hc = HumanCheck(
+                title=wcanon,
+                qid=wq,
+                is_human=is_human_wd,
+                source="live",
+            )
+            ttl = (
+                REDIS_IS_HUMAN_POSITIVE_TTL_SEC
+                if is_human_wd
+                else REDIS_IS_HUMAN_NEGATIVE_TTL_SEC
+            )
+            r.setex(
+                key,
+                ttl,
+                json.dumps({"qid": wq, "is_human": is_human_wd}),
+            )
+            crud.upsert_wiki_human_cache(
+                db,
+                title=wcanon,
+                url=url_canon,
+                qid=wq,
+                is_human=is_human_wd,
+            )
+            db_dirty = True
+            out.append(hc)
+        if db_dirty:
+            db.commit()
 
     return out
 
 
-async def live_resolve_human_checks_wbget_batch(titles: list[str]) -> list[HumanCheck]:
+async def live_resolve_human_checks_wbget_batch(
+    titles: list[str], *, db: Session
+) -> list[HumanCheck]:
     """
     ``_live_human_checks_for_titles`` のエイリアス（外部からのバッチライブ解決用）。
     """
     stripped = [str(t or "").strip() for t in titles]
-    return await _live_human_checks_for_titles(stripped)
+    return await _live_human_checks_for_titles(stripped, db=db)
 
 
 async def batch_human_checks_with_db_redis_priority(
     titles: list[str],
     *,
+    db: Session,
     live_resolver: Callable[[str], Awaitable[HumanCheck]] | None = None,
     live_batch_resolver: Callable[[list[str]], Awaitable[list[HumanCheck]]]
     | None = None,
@@ -502,6 +505,8 @@ async def batch_human_checks_with_db_redis_priority(
     """
     複数タイトルについて ``wiki_human_cache`` を DB で一括取得し、
     未命中は Redis ``MGET``、さらに未命中のみライブ解決に回す。
+
+    ``db`` は呼び出し側（例: FastAPI ``Depends(get_db)``）のセッション。閉じない。
 
     ``live_batch_resolver`` が与えられた場合、未キャッシュ分は **リスト単位**で解決する。
 
@@ -532,15 +537,11 @@ async def batch_human_checks_with_db_redis_priority(
         return [results[i] for i in range(n)]  # type: ignore[list-item]
 
     urls = [crud.wiki_ja_article_url(stripped[i]) for i in pending_indices]
-    db0 = SessionLocal()
     try:
-        try:
-            hits = crud.list_wiki_human_cache_by_urls(db0, urls)
-        except Exception:
-            logger.exception("list_wiki_human_cache_by_urls failed")
-            hits = []
-    finally:
-        db0.close()
+        hits = crud.list_wiki_human_cache_by_urls(db, urls)
+    except Exception:
+        logger.exception("list_wiki_human_cache_by_urls failed")
+        hits = []
 
     by_norm_url: dict[str, Any] = {}
     for row in hits:
@@ -624,7 +625,7 @@ async def batch_human_checks_with_db_redis_priority(
                     results[i] = h
         elif live_resolver is None:
             ts = [t for _, t in need_api]
-            resolved_list = await live_resolve_human_checks_wbget_batch(ts)
+            resolved_list = await live_resolve_human_checks_wbget_batch(ts, db=db)
             for (i, _t), h in zip(need_api, resolved_list):
                 results[i] = h
         else:
@@ -660,54 +661,50 @@ async def batch_human_checks_with_db_redis_priority(
     return out
 
 
-async def is_human_by_title(title: str) -> HumanCheck:
+async def is_human_by_title(db: Session, title: str) -> HumanCheck:
     t = title.strip()
     if not t:
         return HumanCheck(title=title, qid=None, is_human=False, source="unknown")
 
     url_guess = crud.wiki_ja_article_url(t)
-    db = SessionLocal()
-    try:
-        hit = crud.get_wiki_human_cache(db, url=url_guess)
-        if hit is not None:
+    hit = crud.get_wiki_human_cache(db, url=url_guess)
+    if hit is not None:
+        return HumanCheck(
+            title=hit.title,
+            qid=hit.qid,
+            is_human=bool(hit.is_human),
+            source="db_cache",
+        )
+
+    r = _redis()
+    key = _cache_key(t)
+    cached: Any = r.get(key)
+    if cached:
+        try:
+            if not isinstance(cached, (str, bytes, bytearray)):
+                cached = str(cached)
+            d = json.loads(cached)
             return HumanCheck(
-                title=hit.title,
-                qid=hit.qid,
-                is_human=bool(hit.is_human),
-                source="db_cache",
+                title=t,
+                qid=d.get("qid"),
+                is_human=_coerce_bool(d.get("is_human")),
+                source="cache",
             )
+        except Exception:
+            pass
 
-        r = _redis()
-        key = _cache_key(t)
-        cached: Any = r.get(key)
-        if cached:
-            try:
-                if not isinstance(cached, (str, bytes, bytearray)):
-                    cached = str(cached)
-                d = json.loads(cached)
-                return HumanCheck(
-                    title=t,
-                    qid=d.get("qid"),
-                    is_human=_coerce_bool(d.get("is_human")),
-                    source="cache",
-                )
-            except Exception:
-                pass
+    resolved = await _live_human_checks_for_titles([t], db=db)
+    if len(resolved) != 1:
+        return HumanCheck(title=t, qid=None, is_human=False, source="unknown")
+    hc = resolved[0]
 
-        resolved = await _live_human_checks_for_titles([t])
-        if len(resolved) != 1:
-            return HumanCheck(title=t, qid=None, is_human=False, source="unknown")
-        hc = resolved[0]
-
-        url_canon = crud.wiki_ja_article_url(hc.title)
-        hit2 = crud.get_wiki_human_cache(db, url=url_canon)
-        if hit2 is not None:
-            return HumanCheck(
-                title=hit2.title,
-                qid=hit2.qid,
-                is_human=bool(hit2.is_human),
-                source="db_cache",
-            )
-        return hc
-    finally:
-        db.close()
+    url_canon = crud.wiki_ja_article_url(hc.title)
+    hit2 = crud.get_wiki_human_cache(db, url=url_canon)
+    if hit2 is not None:
+        return HumanCheck(
+            title=hit2.title,
+            qid=hit2.qid,
+            is_human=bool(hit2.is_human),
+            source="db_cache",
+        )
+    return hc

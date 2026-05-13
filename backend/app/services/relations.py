@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app import crud
-from app.db import SessionLocal
 from app.model import Person, Relation
 from app.schemas import PersonOut, RelationIn, RelationOut
 from app.services.wiki.resolver.resolve import (
@@ -14,6 +14,7 @@ from app.services.wiki.resolver.resolve import (
 
 
 def save_relations_batch(
+    db: Session,
     payload: list[RelationIn],
     *,
     executed_master_url: str | None,
@@ -39,7 +40,6 @@ def save_relations_batch(
         else:
             executed_norm = crud.normalize_url(executed_master_url)
 
-    db = SessionLocal()
     try:
         out: list[RelationOut] = []
         if executed_norm:
@@ -123,5 +123,3 @@ def save_relations_batch(
     except Exception:
         db.rollback()
         raise
-    finally:
-        db.close()

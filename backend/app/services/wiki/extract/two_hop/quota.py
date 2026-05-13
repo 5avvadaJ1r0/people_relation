@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 from app.schemas import HumanCheck
 from app.services.wiki.extract.two_hop.models import WikiQuotaFactory
 from app.services.wiki.human import live_resolve_human_checks_wbget_batch
@@ -45,10 +47,10 @@ async def quota_run(factory: WikiQuotaFactory) -> Any:
         return await factory()
 
 
-async def quota_batch_human_checks(ts: list[str]) -> list[HumanCheck]:
+async def quota_batch_human_checks(ts: list[str], *, db: Session) -> list[HumanCheck]:
     """外向きクォータ 1 単位で ``live_resolve_human_checks_wbget_batch`` をまとめて実行する。"""
     if not ts:
         return []
     await _wiki_rate_bucket.acquire(1)
     async with _wiki_outbound_sem:
-        return await live_resolve_human_checks_wbget_batch(ts)
+        return await live_resolve_human_checks_wbget_batch(ts, db=db)

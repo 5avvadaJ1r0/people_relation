@@ -31,7 +31,13 @@ def test_batch_human_checks_db_hit_skips_live(
     )
 
     async def run() -> None:
-        out = await batch_human_checks_with_db_redis_priority([title, ""])
+        dbs = SessionLocal()
+        try:
+            out = await batch_human_checks_with_db_redis_priority(
+                [title, ""], db=dbs
+            )
+        finally:
+            dbs.close()
         assert len(out) == 2
         assert out[0].source == "db_cache" and out[0].is_human is True
         assert out[1].source == "unknown" and out[1].is_human is False
