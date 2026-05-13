@@ -491,13 +491,13 @@ export const App = () => {
           </div>
         </nav>
 
-        {mainTab === "list" ? (
-          <div
-            id="main-panel-list"
-            role="tabpanel"
-            aria-labelledby="main-tab-list"
-            className="mainTabPanel"
-          >
+        <div
+          id="main-panel-list"
+          role="tabpanel"
+          aria-labelledby="main-tab-list"
+          className="mainTabPanel"
+          hidden={mainTab !== "list"}
+        >
             <div className="grid">
               <div className="card">
             <h2>❶ 主体者入力</h2>
@@ -750,16 +750,15 @@ export const App = () => {
               </div>
             </div>
           </div>
-        ) : (
-          <div
-            id="main-panel-diagram"
-            role="tabpanel"
-            aria-labelledby="main-tab-diagram"
-            className="mainTabPanel"
-          >
-            <DiagramTabPanel />
-          </div>
-        )}
+        <div
+          id="main-panel-diagram"
+          role="tabpanel"
+          aria-labelledby="main-tab-diagram"
+          className="mainTabPanel"
+          hidden={mainTab !== "diagram"}
+        >
+          <DiagramTabPanel />
+        </div>
       </div>
 
       {busy ? (
