@@ -720,7 +720,7 @@ sequenceDiagram
 
 #### 8-3) フロント（React）の初回選択とキャッシュ（参照実装）
 
-本リポジトリの `frontend/src/ui/App.tsx` / `frontend/src/lib/wikiPersonMatch.ts` は概ね次のとおり（`isPrincipalRelationsCacheSource` は **`PersonSearchOut.has_relations` と同義**）。
+本リポジトリの `frontend/src/App.tsx` / `frontend/src/lib/wikiPersonMatch.ts` は概ね次のとおり（`isPrincipalRelationsCacheSource` は **`PersonSearchOut.has_relations` と同義**）。
 
 - **検索送信時**: `GET /api/v1/wiki/person_search_sse` と `GET /api/v1/person/search` を並列実行する。
 - **選択時**: 検索語と Wikipedia の記事タイトルが一致しないと `person/search` の結果に主体が載らないことがあるため、**記事タイトルおよび括弧を除いた表示名**でも `GET /api/v1/person/search` を追加で呼び、`Person.url` 由来のタイトル正規化込みで同一人物を突き合わせる。
