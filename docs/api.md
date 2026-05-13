@@ -757,7 +757,7 @@ sequenceDiagram
 - 2026-05-12: `app.services.wiki.human` に **共有 Redis / 共有 httpx AsyncClient**、**`is_human_by_title` の DB セッション統合**、**バッチライブ解決の `asyncio.Semaphore`**、Redis `MGET` 失敗時の **`logger.exception`**、否定的 Redis TTL の **1 日**化、アプリ **shutdown でクライアント `aclose`** を追加。
 - 2026-05-12: Wikipedia 検索 SSE の人物フィルタで **`wiki_human_cache` の DB 一括取得 + Redis `MGET`** を導入（`batch_human_checks_with_db_redis_priority`）。未キャッシュ分は既定で **`live_resolve_human_checks_wbget_batch`**（`wbgetentities` バッチ）。
 - 2026-05-12: **`GET /api/v1/wiki/is_human` を廃止**（未使用のため）。人物判定は `is_human_by_title` のみ（SSE 内部呼び出し）。仕様書 §7 を内部サービス記述に差し替え。
-- 2026-05-12: README を現行実装に同期（抽出はバックエンド SSE、キャッシュは `has_relations` 真のときのみ）。`doc/api.md` にフロントの初回選択仕様（8-3）と `PersonSearchOut` 例の整合を追記。
+- 2026-05-12: README を現行実装に同期（抽出はバックエンド SSE、キャッシュは `has_relations` 真のときのみ）。`docs/api.md` にフロントの初回選択仕様（8-3）と `PersonSearchOut` 例の整合を追記。
 - 2026-05-12: MediaWiki クライアントのレート制限ロック細分化・リトライ明示（`MAX_ATTEMPTS`）・例外・JSON 不正時の再試行・設定可能な **`WIKIPEDIA_USER_AGENT`**。 hatnote 抽出を BeautifulSoup 化、記事タイトル内 `:` は名前空間プレフィックス一覧による判定に変更。
 - 2026-05-12: API 仕様書を実装に同期（`/api/v1/health`・`/api/v1/ready` のみ。誤記の `/health` / `/api/health` を削除）。`WikiHuman` 例の `source` を `db_cache` に修正。`PersonOut` の `executed_as_master_at` を JSON 例に反映。`PersonSearchOut.has_relations` の意味を実装どおりに訂正。SSE 節にヘッダ・内部で `is_human_by_title` を直接呼ぶ旨を追記。
 - 2026-05-12: 人物判定のライブ取得を **Wikidata `wbgetentities`（`sites=jawiki` + `titles` のバッチ、`props=claims|sitelinks`）** へ寄せ、別名は **Wikipedia `query`（`redirects=1`）→ `wbgetentities(ids)`** で補完。PyPI パッケージ **`Wikidata`（`wikidata.client`）依存を削除**。`batch_human_checks_with_db_redis_priority` に任意の **`live_batch_resolver`** を追加し、2-hop 抽出は **`live_resolve_human_checks_wbget_batch`** をクォータ 1 単位／バッチで呼ぶ。
