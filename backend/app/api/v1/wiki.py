@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
+
+from app.db import get_db
 
 from app.services.wiki.api.ja_mediawiki import JaWikipediaClient
 from app.services.wiki.extract.principal_search import run_principal_wiki_search
@@ -18,7 +21,10 @@ def _sse_chunk(obj: dict) -> bytes:
 
 
 @router.get("/person_search_sse")
-async def wiki_person_search_sse(q: str = Query(min_length=1)) -> StreamingResponse:
+async def wiki_person_search_sse(
+    q: str = Query(min_length=1),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
     """
     Wikipedia 人物検索 + Wikidata 人物判定をサーバーで実行し、進捗を SSE で返す。
     最終イベント: `{"type":"search_result","wiki":[...],"emptyMessage":string|null}` または `{"type":"error",...}`。
@@ -36,7 +42,7 @@ async def wiki_person_search_sse(q: str = Query(min_length=1)) -> StreamingRespo
         async def worker() -> None:
             try:
                 rows, empty_msg = await run_principal_wiki_search(
-                    wiki, q, on_progress=on_progress
+                    wiki, q, on_progress=on_progress, db=db
                 )
                 await queue.put(
                     {
@@ -74,6 +80,7 @@ async def wiki_person_search_sse(q: str = Query(min_length=1)) -> StreamingRespo
 async def wiki_extract_relations_sse(
     title: str = Query(min_length=1),
     max_related: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """
     Wikipedia 2-hop 関連抽出（本文・wikitext 解析 + Wikidata 人物判定）をサーバーで実行し、進捗を SSE で返す。
@@ -96,6 +103,7 @@ async def wiki_extract_relations_sse(
                     master_title=title,
                     master_name=title,
                     max_related=max_related,
+                    db=db,
                     on_progress=on_progress,
                 )
                 await queue.put({"type": "extract_result", **out})

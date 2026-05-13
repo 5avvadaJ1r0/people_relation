@@ -57,6 +57,8 @@ services:
     environment:
       # 省略時は同一オリジン（nginx 経由の /api）。CDN＋別API検証時は .env で絶対URLを指定
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+      # Vite dev サーバの /api プロキシ先（compose 内では api サービス名を使う）
+      VITE_DEV_PROXY_TARGET: ${VITE_DEV_PROXY_TARGET:-http://api:8000}
     volumes:
       - ../frontend:/app
       - frontend_node_modules:/app/node_modules

@@ -44,6 +44,153 @@ def test_person_search_validation(client: TestClient) -> None:
     assert r.status_code == 422
 
 
+def test_person_search_executed_masters_empty(client: TestClient) -> None:
+    r = client.get(
+        "/api/v1/person/search_executed_masters",
+        params={"name": "存在しない名前"},
+    )
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_person_search_executed_masters_validation(client: TestClient) -> None:
+    r = client.get("/api/v1/person/search_executed_masters", params={"name": ""})
+    assert r.status_code == 422
+
+
+def test_diagram_core_network_validation(client: TestClient) -> None:
+    r = client.post("/api/v1/diagram/core_network", json={"center_titles": ["a"]})
+    assert r.status_code == 422
+
+
+def test_diagram_core_network_validation_too_many_centers(client: TestClient) -> None:
+    titles = [f"t{i}" for i in range(11)]
+    r = client.post("/api/v1/diagram/core_network", json={"center_titles": titles})
+    assert r.status_code == 422
+
+
+def test_diagram_core_network_validation_collapses_to_single_title(
+    client: TestClient,
+) -> None:
+    r = client.post(
+        "/api/v1/diagram/core_network",
+        json={"center_titles": ["only", " only ", "only"]},
+    )
+    assert r.status_code == 422
+
+
+def test_diagram_core_network_validation_total_point_gt_negative(
+    client: TestClient,
+) -> None:
+    r = client.post(
+        "/api/v1/diagram/core_network",
+        json={
+            "center_titles": ["x", "y"],
+            "total_point_gt": -1,
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_person_search_executed_masters_finds_master_not_slave(
+    client: TestClient,
+) -> None:
+    """主体として実行済みの人物だけが search_executed_masters に含まれる。"""
+    url_master = "https://example.com/exem-master-only"
+    url_slave = "https://example.com/exem-slave-only"
+    payload = [
+        {
+            "master": {"name": "Exe主", "url": url_master, "title": "Exe主T"},
+            "slave": {"name": "Exe従", "url": url_slave, "title": "Exe従T"},
+            "point": 1,
+        },
+    ]
+    r = client.post(
+        "/api/v1/relation",
+        json=payload,
+        params={"executed_master_url": url_master},
+    )
+    assert r.status_code == 200
+
+    r_m = client.get(
+        "/api/v1/person/search_executed_masters",
+        params={"name": "Exe主"},
+    )
+    assert r_m.status_code == 200
+    masters = r_m.json()
+    assert len(masters) == 1
+    assert masters[0]["url"] == url_master
+
+    r_s = client.get(
+        "/api/v1/person/search_executed_masters",
+        params={"name": "Exe従"},
+    )
+    assert r_s.status_code == 200
+    assert r_s.json() == []
+
+
+def test_diagram_core_network_returns_pairs(client: TestClient) -> None:
+    payload = [
+        {
+            "master": {
+                "name": "図甲",
+                "url": "https://example.com/diagram-a",
+                "title": "図甲タイトル",
+            },
+            "slave": {
+                "name": "図乙",
+                "url": "https://example.com/diagram-b",
+                "title": "図乙タイトル",
+            },
+            "point": 3,
+        },
+        {
+            "master": {
+                "name": "図乙",
+                "url": "https://example.com/diagram-b",
+                "title": "図乙タイトル",
+            },
+            "slave": {
+                "name": "図甲",
+                "url": "https://example.com/diagram-a",
+                "title": "図甲タイトル",
+            },
+            "point": 2,
+        },
+    ]
+    r = client.post(
+        "/api/v1/relation",
+        json=payload,
+        params={"executed_master_url": "https://example.com/diagram-a"},
+    )
+    assert r.status_code == 200
+
+    r2 = client.post(
+        "/api/v1/diagram/core_network",
+        json={"center_titles": ["図甲タイトル", "図乙タイトル"]},
+    )
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["center_titles"] == ["図甲タイトル", "図乙タイトル"]
+    pairs = body["pairs"]
+    assert len(pairs) == 1
+    assert pairs[0]["total_point"] == 5
+
+    r3 = client.post(
+        "/api/v1/diagram/core_network",
+        json={"center_titles": ["図甲タイトル", "図乙タイトル"], "total_point_gt": 5},
+    )
+    assert r3.status_code == 200
+    assert r3.json()["pairs"] == []
+
+    r4 = client.post(
+        "/api/v1/diagram/core_network",
+        json={"center_titles": ["図甲タイトル", "図乙タイトル"], "total_point_gt": 4},
+    )
+    assert r4.status_code == 200
+    assert len(r4.json()["pairs"]) == 1
+
+
 def test_person_relations_not_found(client: TestClient) -> None:
     r = client.get("/api/v1/person/99999/relations")
     assert r.status_code == 404

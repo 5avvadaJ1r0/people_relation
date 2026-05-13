@@ -1,0 +1,360 @@
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  memo,
+  useRef,
+  type MutableRefObject,
+} from "react";
+import {
+  Background,
+  Controls,
+  Handle,
+  MiniMap,
+  type NodeProps,
+  Position,
+  ReactFlow,
+  type Edge,
+  type Node,
+  useEdgesState,
+  useNodesInitialized,
+  useNodesState,
+  useReactFlow,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import {
+  buildDiagramNodesAndEdges,
+  tieHeatStyle,
+  type DiagramRow,
+  type TwoCoreLayout,
+} from "../lib/diagramGraph";
+import {
+  captureCorrelationDiagramPngBlob,
+  shareCorrelationDiagram,
+} from "../lib/correlationDiagramExport";
+import { DimensionalSmoothStepEdge } from "./DimensionalSmoothStepEdge";
+
+const CORRELATION_FLOW_DOM_ID = "correlation-diagram-rf";
+/** fitView アニメ後にノードが落ち着いてから PNG を切る */
+const SHARE_PREFETCH_DEBOUNCE_MS = 480;
+
+type InnerShareApi = {
+  /** プリフェッチ済み Blob で共有（`navigator.share` は同期的に呼ぶ） */
+  shareFromPrefetched: () => Promise<void>;
+};
+
+/** 親（ヘッダー等）から `navigator.share` で画像共有するときに使う ref。 */
+export type CorrelationDiagramViewHandle = {
+  shareAsImage: () => Promise<void>;
+};
+
+const CorrelationDiagramShareBind = ({
+  members,
+  rows,
+  twoCoreLayout,
+  innerShareApiRef,
+  onDiagramShareReadyChange,
+}: {
+  members: readonly string[];
+  rows: DiagramRow[];
+  twoCoreLayout: TwoCoreLayout;
+  innerShareApiRef: MutableRefObject<InnerShareApi | null>;
+  onDiagramShareReadyChange?: (ready: boolean) => void;
+}) => {
+  const rf = useReactFlow();
+  const nodesReady = useNodesInitialized();
+  const prefetchedBlobRef = useRef<Blob | null>(null);
+  const prefetchGenRef = useRef(0);
+
+  useEffect(() => {
+    innerShareApiRef.current = {
+      shareFromPrefetched: () => {
+        const blob = prefetchedBlobRef.current;
+        if (!blob) {
+          throw new Error(
+            "共有用の画像をまだ用意できていません。少し待ってから再度お試しください。",
+          );
+        }
+        return shareCorrelationDiagram(blob);
+      },
+    };
+    return () => {
+      innerShareApiRef.current = null;
+    };
+  }, [innerShareApiRef]);
+
+  useEffect(() => {
+    if (!nodesReady) {
+      prefetchedBlobRef.current = null;
+      onDiagramShareReadyChange?.(false);
+      return;
+    }
+
+    prefetchedBlobRef.current = null;
+    onDiagramShareReadyChange?.(false);
+
+    const gen = ++prefetchGenRef.current;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        if (prefetchGenRef.current !== gen) return;
+        const viewportEl = document.querySelector(
+          `#${CORRELATION_FLOW_DOM_ID} .react-flow__viewport`,
+        ) as HTMLElement | null;
+        if (!viewportEl) {
+          onDiagramShareReadyChange?.(false);
+          return;
+        }
+        try {
+          const blob = await captureCorrelationDiagramPngBlob(viewportEl, rf);
+          if (prefetchGenRef.current !== gen) return;
+          prefetchedBlobRef.current = blob;
+          onDiagramShareReadyChange?.(true);
+        } catch {
+          if (prefetchGenRef.current !== gen) return;
+          prefetchedBlobRef.current = null;
+          onDiagramShareReadyChange?.(false);
+        }
+      })();
+    }, SHARE_PREFETCH_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+      prefetchGenRef.current += 1;
+    };
+  }, [
+    nodesReady,
+    members,
+    rows,
+    twoCoreLayout,
+    rf,
+    onDiagramShareReadyChange,
+  ]);
+
+  return null;
+};
+
+const handleStyle = {
+  opacity: 0,
+  width: 10,
+  height: 10,
+  border: "none",
+  background: "transparent",
+} as const;
+
+const CoreNode = memo(({ data }: NodeProps) => (
+  <div className="diagramNodeCore">
+    <Handle
+      type="target"
+      position={Position.Top}
+      id="in"
+      style={handleStyle}
+      isConnectable={false}
+    />
+    <Handle
+      type="source"
+      position={Position.Bottom}
+      id="out"
+      style={handleStyle}
+      isConnectable={false}
+    />
+    {String(data.label)}
+  </div>
+));
+
+CoreNode.displayName = "CoreNode";
+
+const PersonNode = memo(({ data }: NodeProps) => {
+  const heat =
+    typeof data.tieHeat === "number" && Number.isFinite(data.tieHeat)
+      ? data.tieHeat
+      : 0.5;
+  const sum = data.tieSum;
+  const mc =
+    typeof data.memberCount === "number" && Number.isFinite(data.memberCount)
+      ? data.memberCount
+      : null;
+  const title =
+    typeof sum === "number" && mc !== null
+      ? `メンバー${mc}名との関連ポイント合計: ${sum}`
+      : typeof sum === "number"
+        ? `関連ポイント合計: ${sum}`
+        : undefined;
+
+  return (
+    <div
+      className="diagramNodePerson"
+      style={tieHeatStyle(heat)}
+      title={title}
+    >
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="in"
+        style={handleStyle}
+        isConnectable={false}
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="out"
+        style={handleStyle}
+        isConnectable={false}
+      />
+      {String(data.label)}
+    </div>
+  );
+});
+
+PersonNode.displayName = "PersonNode";
+
+const FitViewOnReady = ({
+  fitTrigger,
+}: {
+  /** レイアウト切り替えなどノード座標が変わったあと再フィットするためのキー */
+  fitTrigger?: string;
+}) => {
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    const t = requestAnimationFrame(() => {
+      fitView({ padding: 0.2, duration: 400 });
+    });
+    return () => cancelAnimationFrame(t);
+  }, [fitView, fitTrigger]);
+  return null;
+};
+
+export type CorrelationDiagramViewProps = {
+  members: readonly string[];
+  rows: DiagramRow[];
+  /** 中心が 2 名のときのみ有効。コアノードを縦（上・下）または横（左・右）に並べる */
+  twoCoreLayout?: TwoCoreLayout;
+  /** 共有ボタン活性用。ノード計測完了で `true` */
+  onDiagramShareReadyChange?: (ready: boolean) => void;
+};
+
+export const CorrelationDiagramView = forwardRef<
+  CorrelationDiagramViewHandle,
+  CorrelationDiagramViewProps
+>(function CorrelationDiagramView(
+  {
+    members,
+    rows,
+    twoCoreLayout = "vertical",
+    onDiagramShareReadyChange,
+  },
+  ref,
+) {
+  const innerShareApiRef = useRef<InnerShareApi | null>(null);
+  const layoutOpt = useMemo(
+    () =>
+      members.length === 2
+        ? { twoCoreLayout: twoCoreLayout }
+        : undefined,
+    [members.length, twoCoreLayout],
+  );
+
+  const built = useMemo(
+    () => buildDiagramNodesAndEdges(members, rows, layoutOpt),
+    [members, rows, layoutOpt],
+  );
+
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<Node>(built.nodes);
+  const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>(built.edges);
+
+  useEffect(() => {
+    const next = buildDiagramNodesAndEdges(members, rows, layoutOpt);
+    setRfNodes(next.nodes);
+    setRfEdges(next.edges);
+  }, [members, rows, layoutOpt, setRfEdges, setRfNodes]);
+
+  const nodeTypes = useMemo(
+    () => ({
+      core: CoreNode,
+      person: PersonNode,
+    }),
+    [],
+  );
+
+  const edgeTypes = useMemo(
+    () => ({
+      dimensionalSmoothstep: DimensionalSmoothStepEdge,
+    }),
+    [],
+  );
+
+  const empty = members.length === 0 && rows.length === 0;
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      shareAsImage: () => {
+        if (empty) {
+          throw new Error("相関図がありません。");
+        }
+        const share = innerShareApiRef.current?.shareFromPrefetched;
+        if (!share) {
+          throw new Error(
+            "描画の準備中です。少し待ってから再度お試しください。",
+          );
+        }
+        return share();
+      },
+    }),
+    [empty],
+  );
+
+  useEffect(() => {
+    if (empty) {
+      onDiagramShareReadyChange?.(false);
+    }
+  }, [empty, onDiagramShareReadyChange]);
+
+  const fitTrigger =
+    members.length === 2
+      ? `${twoCoreLayout}:${members.join("\u0001")}:${rows.length}`
+      : `${members.length}:${rows.length}`;
+
+  return (
+    <div className="diagramFlowWrap">
+      {empty ? (
+        <div className="diagramFlowEmpty">相関図はまだありません。</div>
+      ) : (
+        <ReactFlow
+          id={CORRELATION_FLOW_DOM_ID}
+          nodes={rfNodes}
+          edges={rfEdges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          colorMode="dark"
+          minZoom={0.15}
+          maxZoom={1.8}
+          fitView
+          proOptions={{ hideAttribution: true }}
+        >
+          <CorrelationDiagramShareBind
+            members={members}
+            rows={rows}
+            twoCoreLayout={twoCoreLayout}
+            innerShareApiRef={innerShareApiRef}
+            onDiagramShareReadyChange={onDiagramShareReadyChange}
+          />
+          <Background gap={20} color="#1e293b" size={1.15} />
+          <Controls showInteractive={false} />
+          <MiniMap
+            nodeStrokeWidth={2}
+            zoomable
+            pannable
+            maskColor="rgba(2, 6, 23, 0.55)"
+            style={{ backgroundColor: "#0f172a" }}
+          />
+          <FitViewOnReady fitTrigger={fitTrigger} />
+        </ReactFlow>
+      )}
+    </div>
+  );
+});
+
+CorrelationDiagramView.displayName = "CorrelationDiagramView";
