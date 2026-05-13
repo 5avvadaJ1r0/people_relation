@@ -35,7 +35,7 @@ jobs:
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check GEMINI_API_KEY
         id: gemini_key
