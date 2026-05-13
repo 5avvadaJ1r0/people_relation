@@ -83,6 +83,9 @@ API と画面のオリジンが分かれるときは、バックエンドの `CO
 4. **保存**
    SSE の抽出が終わったあと、フロントは **`POST /api/v1/relation`** で関係を保存する（クエリに主体の Wikipedia URL を付与して、同一主体の既存関係を置き換え可能。詳細は下記および [`doc/api.md`](doc/api.md)）。
 
+5. **相関図（任意）**
+   複数の主体者実行済み人物を中心に、保存済みの関係だけから無向ネットワークを描画する。画面の **「相関図作成」** タブと API は下記「相関図作成タブ（機能追加）」および [`doc/api.md`](doc/api.md) を参照。
+
 ## 人物のリストアップのアルゴリズム（サーバー側の概要）
 
 実装は `app.services.wiki.extract.two_hop` がオーケストレーションする。**概念としては**次のとおり。
@@ -167,6 +170,8 @@ Content-Type: application/json
 - `GET /api/v1/ready`（DB 接続確認）
 - `POST /api/v1/relation`（関係データの保存・upsert）
 - `GET /api/v1/person/search?name=...`（保存済み人物の検索。`has_relations` は「主体者として関係保存を実行したことがあるか」。レスポンスに `executed_as_master_at` あり）
+- `GET /api/v1/person/search_executed_masters?name=...`（**主体者実行済み**の人物のみ検索。相関図タブの中心人物サジェスト用）
+- `POST /api/v1/diagram/core_network`（中心人物 2〜10 名の **無向ペア集約**。リクエストに `total_point_gt` あり。レスポンスは相関図用エッジ一覧）
 - `GET /api/v1/person/{person_id}/relations`（主体者の関連者を取得）
 - `GET /api/v1/person/{person_id}/relations_aggregate`（forward / reverse を集約した関連者一覧）
 - `GET /api/v1/wiki/person_search_sse?q=...`（Wikipedia 検索 + 人物フィルタ、**SSE**）
@@ -185,6 +190,17 @@ Content-Type: application/json
 - **「再実行」** は常に **`extract_relations_sse`**（最新の Wikipedia から取り直し）。主体として保存済みの人物には **「キャッシュ再取得」**（`relations_aggregate` のみ）も表示。
 - 関連者行の **「主体者として実行」** で、その人物名を検索語に代入して ❷ の検索を実行できる。
 - **「戻る」** で検索画面に戻る。
+
+### 相関図作成タブ（機能追加）
+
+メイン画面の **「相関図作成」** タブでは、データベースに保存済みの関係（`POST /api/v1/relation` で主体として保存したデータ）だけを使い、**複数の中心人物**を結ぶ無向ネットワークを可視化する。
+
+- **中心人物の選び方** — 氏名の一部で検索し、サジェストから追加する。候補は **いままで主体者として関係保存を実行したことがある人物のみ**（`GET /api/v1/person/search_executed_masters`）。**2〜10 名**選べる。
+- **図の生成** — 「相関図を作成する」で **`POST /api/v1/diagram/core_network`** を呼び、中心人物同士および共通の関連者を **無向ペア**（両方向の `point` を合算した `total_point`）として取得し、フロント（React Flow / `@xyflow/react`）でノード・エッジとして描画する。
+- **しきい値** — 表示は **`SUM(point) > total_point_gt`** を満たす関係だけに絞る。既定は `total_point_gt = 1`。「関連者を増やす／減らす」でしきい値を前後させ、同じ API で再取得してノード数を調整できる。
+- **中心が 2 名のとき** — 2 つのコアノードの配置を **縦（上・下）／横（左・右）** で切り替えられる。
+- **共有** — Web Share API で画像共有が使える環境では、描画完了後に **「相関図を共有」** から PNG を共有できる（未対応ブラウザではボタンは出ない）。
+- **リストアップ画面からの導線** — 関連者抽出・保存が済んだ主体者について、**「主体者を相関図に追加」** で相関図タブへ移動し、その人物を中心候補としてキュー投入できる。
 
 ### Wikipedia API の利用について
 
