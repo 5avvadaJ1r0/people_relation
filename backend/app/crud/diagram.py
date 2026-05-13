@@ -44,7 +44,9 @@ def _core_network_edges_aggregate_select(titles: list[str], total_point_gt: int)
     )
 
 
-def _rows_to_core_network_edge_tuples(rows: Iterable[Any]) -> list[tuple[str, str, int]]:
+def _rows_to_core_network_edge_tuples(
+    rows: Iterable[Any],
+) -> list[tuple[str, str, int]]:
     """集約クエリの行を (title_a, title_b, total_point) に変換する。"""
     out: list[tuple[str, str, int]] = []
     for a, b, tp in rows:

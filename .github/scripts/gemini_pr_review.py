@@ -35,10 +35,16 @@ def main() -> int:
     max_chars = int(os.environ.get("MAX_DIFF_CHARS") or "200000")
 
     if not api_key:
-        print("GEMINI_API_KEY が空です。リポジトリの Actions シークレットに GEMINI_API_KEY を設定してください。", file=sys.stderr)
+        print(
+            "GEMINI_API_KEY が空です。リポジトリの Actions シークレットに GEMINI_API_KEY を設定してください。",
+            file=sys.stderr,
+        )
         return 1
     if not token or not repo or not pr:
-        print("GITHUB_TOKEN / GITHUB_REPOSITORY / PR_NUMBER が不足しています。", file=sys.stderr)
+        print(
+            "GITHUB_TOKEN / GITHUB_REPOSITORY / PR_NUMBER が不足しています。",
+            file=sys.stderr,
+        )
         return 1
 
     try:
@@ -93,11 +99,16 @@ def main() -> int:
 
     candidates = data.get("candidates") or []
     if not candidates:
-        print(f"Gemini の応答に candidates がありません: {json.dumps(data)[:2000]}", file=sys.stderr)
+        print(
+            f"Gemini の応答に candidates がありません: {json.dumps(data)[:2000]}",
+            file=sys.stderr,
+        )
         return 1
     parts = ((candidates[0].get("content") or {}).get("parts")) or []
     if not parts or "text" not in parts[0]:
-        print(f"Gemini の応答形式が想定外です: {json.dumps(data)[:2000]}", file=sys.stderr)
+        print(
+            f"Gemini の応答形式が想定外です: {json.dumps(data)[:2000]}", file=sys.stderr
+        )
         return 1
     text = parts[0]["text"]
 

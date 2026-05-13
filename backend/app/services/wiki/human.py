@@ -397,9 +397,7 @@ async def _live_human_checks_for_titles(
             if nk in by_site:
                 qid, is_human, canon = by_site[nk]
                 url_canon = crud.wiki_ja_article_url(canon)
-                hc = HumanCheck(
-                    title=canon, qid=qid, is_human=is_human, source="live"
-                )
+                hc = HumanCheck(title=canon, qid=qid, is_human=is_human, source="live")
                 ttl = (
                     REDIS_IS_HUMAN_POSITIVE_TTL_SEC
                     if is_human
@@ -423,9 +421,7 @@ async def _live_human_checks_for_titles(
 
             wq, wcanon, wp_missing = wp_map.get(nk, (None, t, True))
             if not wq:
-                hc = HumanCheck(
-                    title=wcanon, qid=None, is_human=False, source="live"
-                )
+                hc = HumanCheck(title=wcanon, qid=None, is_human=False, source="live")
                 r.setex(
                     key,
                     REDIS_IS_HUMAN_NEGATIVE_TTL_SEC,
@@ -446,9 +442,7 @@ async def _live_human_checks_for_titles(
             is_human_wd = human_by_qid.get(wq)
             if is_human_wd is None:
                 out.append(
-                    HumanCheck(
-                        title=wcanon, qid=wq, is_human=False, source="unknown"
-                    )
+                    HumanCheck(title=wcanon, qid=wq, is_human=False, source="unknown")
                 )
                 continue
 

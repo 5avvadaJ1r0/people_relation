@@ -16,6 +16,4 @@ def post_relations(
     executed_master_url: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> list[RelationOut]:
-    return save_relations_batch(
-        db, payload, executed_master_url=executed_master_url
-    )
+    return save_relations_batch(db, payload, executed_master_url=executed_master_url)

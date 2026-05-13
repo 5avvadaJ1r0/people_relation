@@ -33,9 +33,7 @@ def test_batch_human_checks_db_hit_skips_live(
     async def run() -> None:
         dbs = SessionLocal()
         try:
-            out = await batch_human_checks_with_db_redis_priority(
-                [title, ""], db=dbs
-            )
+            out = await batch_human_checks_with_db_redis_priority([title, ""], db=dbs)
         finally:
             dbs.close()
         assert len(out) == 2
