@@ -18,6 +18,7 @@ import {
   buildDiagramNodesAndEdges,
   tieHeatStyle,
   type DiagramRow,
+  type TwoCoreLayout,
 } from "../lib/diagramGraph";
 import { DimensionalSmoothStepEdge } from "./DimensionalSmoothStepEdge";
 
@@ -95,39 +96,55 @@ const PersonNode = memo(({ data }: NodeProps) => {
 
 PersonNode.displayName = "PersonNode";
 
-const FitViewOnReady = () => {
+const FitViewOnReady = ({
+  fitTrigger,
+}: {
+  /** レイアウト切り替えなどノード座標が変わったあと再フィットするためのキー */
+  fitTrigger?: string;
+}) => {
   const { fitView } = useReactFlow();
   useEffect(() => {
     const t = requestAnimationFrame(() => {
       fitView({ padding: 0.2, duration: 400 });
     });
     return () => cancelAnimationFrame(t);
-  }, [fitView]);
+  }, [fitView, fitTrigger]);
   return null;
 };
 
 export type CorrelationDiagramViewProps = {
   members: readonly string[];
   rows: DiagramRow[];
+  /** 中心が 2 名のときのみ有効。コアノードを縦（上・下）または横（左・右）に並べる */
+  twoCoreLayout?: TwoCoreLayout;
 };
 
 export const CorrelationDiagramView = ({
   members,
   rows,
+  twoCoreLayout = "vertical",
 }: CorrelationDiagramViewProps) => {
+  const layoutOpt = useMemo(
+    () =>
+      members.length === 2
+        ? { twoCoreLayout: twoCoreLayout }
+        : undefined,
+    [members.length, twoCoreLayout],
+  );
+
   const built = useMemo(
-    () => buildDiagramNodesAndEdges(members, rows),
-    [members, rows],
+    () => buildDiagramNodesAndEdges(members, rows, layoutOpt),
+    [members, rows, layoutOpt],
   );
 
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState<Node>(built.nodes);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>(built.edges);
 
   useEffect(() => {
-    const next = buildDiagramNodesAndEdges(members, rows);
+    const next = buildDiagramNodesAndEdges(members, rows, layoutOpt);
     setRfNodes(next.nodes);
     setRfEdges(next.edges);
-  }, [members, rows, setRfEdges, setRfNodes]);
+  }, [members, rows, layoutOpt, setRfEdges, setRfNodes]);
 
   const nodeTypes = useMemo(
     () => ({
@@ -145,6 +162,10 @@ export const CorrelationDiagramView = ({
   );
 
   const empty = members.length === 0 && rows.length === 0;
+  const fitTrigger =
+    members.length === 2
+      ? `${twoCoreLayout}:${members.join("\u0001")}:${rows.length}`
+      : `${members.length}:${rows.length}`;
 
   return (
     <div className="diagramFlowWrap">
@@ -173,7 +194,7 @@ export const CorrelationDiagramView = ({
             maskColor="rgba(2, 6, 23, 0.55)"
             style={{ backgroundColor: "#0f172a" }}
           />
-          <FitViewOnReady />
+          <FitViewOnReady fitTrigger={fitTrigger} />
         </ReactFlow>
       )}
     </div>

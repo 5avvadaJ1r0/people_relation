@@ -3,6 +3,9 @@ import type { Edge, Node } from "@xyflow/react";
 
 export type DiagramRow = { a: string; b: string; points: number };
 
+/** 中心人物がちょうど 2 名のときのコアノード配置（縦: 上・下 / 横: 左・右） */
+export type TwoCoreLayout = "vertical" | "horizontal";
+
 const collectPeople = (
   rows: DiagramRow[],
   members: readonly string[],
@@ -80,8 +83,21 @@ const layoutCoreRing = (
   centerY: number,
   coreRingR: number,
   members: readonly string[],
+  twoCoreLayout?: TwoCoreLayout,
 ): Map<string, { x: number; y: number }> => {
   const pos = new Map<string, { x: number; y: number }>();
+  if (members.length === 2 && twoCoreLayout === "horizontal") {
+    const [a, b] = members;
+    pos.set(a, {
+      x: centerX + coreRingR * Math.cos(Math.PI),
+      y: centerY + coreRingR * Math.sin(Math.PI),
+    });
+    pos.set(b, {
+      x: centerX + coreRingR * Math.cos(0),
+      y: centerY + coreRingR * Math.sin(0),
+    });
+    return pos;
+  }
   members.forEach((name, i) => {
     const angle = (i / members.length) * Math.PI * 2 - Math.PI / 2;
     pos.set(name, {
@@ -277,12 +293,19 @@ const layoutNodes = (
   coreDistinctCount: Map<string, number>,
   members: readonly string[],
   coreSet: Set<string>,
+  twoCoreLayout?: TwoCoreLayout,
 ): Map<string, { x: number; y: number }> => {
   const centerX = 520;
   const centerY = 400;
   const coreRingR = 215;
 
-  const pos = layoutCoreRing(centerX, centerY, coreRingR, members);
+  const pos = layoutCoreRing(
+    centerX,
+    centerY,
+    coreRingR,
+    members,
+    members.length === 2 ? twoCoreLayout : undefined,
+  );
   layoutSatelliteInitial(
     pos,
     people,
@@ -392,6 +415,7 @@ export const tieHeatStyle = (heat01: number): CSSProperties => {
 export const buildDiagramNodesAndEdges = (
   members: readonly string[],
   rows: DiagramRow[],
+  opts?: { twoCoreLayout?: TwoCoreLayout },
 ): { nodes: Node[]; edges: Edge[] } => {
   const coreSet = new Set(members);
   const { people, primaryCore, rows: graphRows, coreTieStrength, coreDistinctCount } =
@@ -403,6 +427,7 @@ export const buildDiagramNodesAndEdges = (
     coreDistinctCount,
     members,
     coreSet,
+    opts?.twoCoreLayout,
   );
   const maxPoint = Math.max(1, ...rows.map((r) => r.points));
 

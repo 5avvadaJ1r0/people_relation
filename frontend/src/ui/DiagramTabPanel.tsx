@@ -4,7 +4,7 @@ import {
   apiSearchPersonExecutedMasters,
 } from "../lib/api";
 import type { ApiPerson } from "../lib/types";
-import type { DiagramRow } from "../lib/diagramGraph";
+import type { DiagramRow, TwoCoreLayout } from "../lib/diagramGraph";
 import { CorrelationDiagramView } from "./CorrelationDiagramView";
 
 const SUGGEST_DEBOUNCE_MS = 320;
@@ -60,6 +60,8 @@ export const DiagramTabPanel = () => {
   const [members, setMembers] = useState<string[]>([]);
   const [rows, setRows] = useState<DiagramRow[]>([]);
   const [totalPointGt, setTotalPointGt] = useState(1);
+  /** 中心 2 名の相関図でのみ利用（縦＝上・下 / 横＝左・右） */
+  const [twoCoreLayout, setTwoCoreLayout] = useState<TwoCoreLayout>("vertical");
   const queryInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectableMatches = useMemo(
@@ -376,6 +378,7 @@ export const DiagramTabPanel = () => {
                     setMembers([]);
                     setRows([]);
                     setTotalPointGt(1);
+                    setTwoCoreLayout("vertical");
                     setError(null);
                   }}
                 >
@@ -390,9 +393,46 @@ export const DiagramTabPanel = () => {
       <div className="diagramFlowSection">
         <div className="card diagramFlowCard">
           <div className="diagramFlowCardHeader">
-            <h2 className="diagramFlowSectionTitle diagramCardLeadTitle">
-              相関図
-            </h2>
+            <div className="diagramFlowCardTitleRow">
+              <h2 className="diagramFlowSectionTitle diagramCardLeadTitle">
+                相関図
+              </h2>
+              {members.length === 2 ? (
+                <div
+                  className="diagramTwoCoreLayoutBar"
+                  role="group"
+                  aria-label="中心2名の並び"
+                >
+                  <span className="diagramTwoCoreLayoutLabel">中心の並び</span>
+                  <div className="diagramSegmented">
+                    <button
+                      type="button"
+                      className={
+                        twoCoreLayout === "vertical"
+                          ? "diagramSegmentedBtn diagramSegmentedBtnActive"
+                          : "diagramSegmentedBtn"
+                      }
+                      aria-pressed={twoCoreLayout === "vertical"}
+                      onClick={() => setTwoCoreLayout("vertical")}
+                    >
+                      縦
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        twoCoreLayout === "horizontal"
+                          ? "diagramSegmentedBtn diagramSegmentedBtnActive"
+                          : "diagramSegmentedBtn"
+                      }
+                      aria-pressed={twoCoreLayout === "horizontal"}
+                      onClick={() => setTwoCoreLayout("horizontal")}
+                    >
+                      横
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
             {members.length > 0 ? (
               <div className="diagramThresholdBar">
                 <div className="diagramThresholdLabel">
@@ -437,7 +477,11 @@ export const DiagramTabPanel = () => {
               </div>
             ) : null}
           </div>
-          <CorrelationDiagramView members={members} rows={rows} />
+          <CorrelationDiagramView
+            members={members}
+            rows={rows}
+            twoCoreLayout={twoCoreLayout}
+          />
         </div>
       </div>
     </div>
