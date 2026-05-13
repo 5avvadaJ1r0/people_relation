@@ -7,6 +7,9 @@ import type { ApiPerson } from "../lib/types";
 import type { DiagramRow, TwoCoreLayout } from "../lib/diagramGraph";
 import { CorrelationDiagramView } from "./CorrelationDiagramView";
 
+/** 相関図の中心人物として選べる最大人数（API `CoreNetworkIn` と一致） */
+const MAX_DIAGRAM_CENTER = 10;
+
 const SUGGEST_DEBOUNCE_MS = 320;
 const MIN_SUGGEST_QUERY_LEN = 1;
 
@@ -126,7 +129,7 @@ export const DiagramTabPanel = () => {
 
   const addCenter = (p: ApiPerson) => {
     if (center.some((c) => c.id === p.id)) return;
-    if (center.length >= 5) return;
+    if (center.length >= MAX_DIAGRAM_CENTER) return;
     setCenter((prev) => [...prev, p]);
     setQuery("");
     setMatches([]);
@@ -139,7 +142,8 @@ export const DiagramTabPanel = () => {
     setCenter((prev) => prev.filter((c) => c.id !== id));
   };
 
-  const canBuild = center.length >= 2 && center.length <= 5;
+  const canBuild =
+    center.length >= 2 && center.length <= MAX_DIAGRAM_CENTER;
 
   /** `SUM(point) > total_point_gt` で無向ペアを絞り込む。gt を上げると関連者は減り、下げると増える。 */
   const loadDiagramWithGt = async (gt: number) => {
@@ -191,7 +195,9 @@ export const DiagramTabPanel = () => {
               </h2>
               <h2>著名人（主体者実行済みのみ）</h2>
               <div className="diagramSuggestWrap">
-                <div className="textInputWrap">
+                <div
+                  className={`textInputWrap${center.length >= MAX_DIAGRAM_CENTER ? " diagramCenterInputAtCap" : ""}`}
+                >
                   <input
                     ref={queryInputRef}
                     id="diagram-query"
@@ -209,7 +215,12 @@ export const DiagramTabPanel = () => {
                     autoComplete="off"
                     value={query}
                     placeholder="氏名の一部を入力して選択"
-                    disabled={busy || center.length >= 5}
+                    disabled={busy || center.length >= MAX_DIAGRAM_CENTER}
+                    title={
+                      center.length >= MAX_DIAGRAM_CENTER
+                        ? `中心人物は最大${MAX_DIAGRAM_CENTER}名までです（これ以上追加できません）`
+                        : undefined
+                    }
                     className={query.trim().length > 0 ? "hasRightIcon" : ""}
                     onChange={(e) => setQuery(e.target.value)}
                     onFocus={() => setSuggestFocused(true)}
@@ -250,7 +261,7 @@ export const DiagramTabPanel = () => {
                       className="textInputRightIcon"
                       aria-label="入力をクリア"
                       title="クリア"
-                      disabled={busy || center.length >= 5}
+                      disabled={busy || center.length >= MAX_DIAGRAM_CENTER}
                       onMouseDown={(ev) => ev.preventDefault()}
                       onClick={() => {
                         setQuery("");
@@ -310,8 +321,8 @@ export const DiagramTabPanel = () => {
                       ))
                     ) : (
                       <div className="diagramSuggestEmpty">
-                        {center.length >= 5
-                          ? "中心人物は最大 5 名までです。"
+                        {center.length >= MAX_DIAGRAM_CENTER
+                          ? `中心人物は最大 ${MAX_DIAGRAM_CENTER} 名までです。`
                           : matches.length > 0
                             ? "この検索結果はすべてすでに中心人物に追加されています。"
                             : suggestFetched
@@ -322,9 +333,9 @@ export const DiagramTabPanel = () => {
                   </div>
                 ) : null}
               </div>
-              {center.length >= 5 ? (
+              {center.length >= MAX_DIAGRAM_CENTER ? (
                 <p className="subtitle" style={{ marginTop: 10 }}>
-                  中心人物が上限に達したため、追加の入力はできません。
+                  中心人物が上限（{MAX_DIAGRAM_CENTER}名）に達したため、追加の入力はできません。
                 </p>
               ) : (
                 <p className="subtitle" style={{ marginTop: 10 }}>
@@ -339,7 +350,7 @@ export const DiagramTabPanel = () => {
               <h2 className="diagramFlowSectionTitle diagramCardLeadTitle">
                 相関図を作成する
               </h2>
-              <h2>中心人物（2〜5名）</h2>
+              <h2>中心人物（2〜{MAX_DIAGRAM_CENTER}名）</h2>
               <div className="diagramCenterChips">
                 {center.length === 0 ? (
                   <div className="subtitle">まだ選んでいません。</div>
@@ -442,7 +453,7 @@ export const DiagramTabPanel = () => {
                   {!canBuild ? (
                     <span className="diagramThresholdWarn">
                       {" "}
-                      中心人物を 2〜5 名に戻すと、下のボタンで再取得できます。
+                      中心人物を 2〜{MAX_DIAGRAM_CENTER} 名に戻すと、下のボタンで再取得できます。
                     </span>
                   ) : null}
                 </div>

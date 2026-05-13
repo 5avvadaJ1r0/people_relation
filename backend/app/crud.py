@@ -147,7 +147,7 @@ def aggregate_core_network_edges(
     ペアは辞書順で正規化（PostgreSQL の LEAST/GREATEST と同等）。SQLite でも動くよう CASE で実装。
     `SUM(point) > total_point_gt` かつ `point <> 0` の行のみ。
     """
-    if len(center_titles) < 2 or len(center_titles) > 5:
+    if len(center_titles) < 2 or len(center_titles) > 10:
         return []
 
     titles = list(dict.fromkeys(t.strip() for t in center_titles if t.strip()))

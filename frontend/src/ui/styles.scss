@@ -345,6 +345,23 @@ a {
   position: relative;
 }
 
+/* 中心人物が上限のとき、追加不可であることを示すグレー入力 */
+.diagramSuggestWrap .textInputWrap.diagramCenterInputAtCap input[type="text"] {
+  background: #e5e7eb;
+  color: #6b7280;
+  border-color: #d1d5db;
+}
+
+.diagramSuggestWrap .textInputWrap.diagramCenterInputAtCap input[type="text"]:disabled {
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.diagramSuggestWrap .textInputWrap.diagramCenterInputAtCap input[type="text"]:focus {
+  border-color: #d1d5db;
+  box-shadow: none;
+}
+
 .diagramSuggestPanel {
   position: absolute;
   z-index: 30;
