@@ -431,21 +431,28 @@ export const buildDiagramNodesAndEdges = (
   );
   const maxPoint = Math.max(1, ...rows.map((r) => r.points));
 
-  let minT = Infinity;
-  let maxT = -Infinity;
+  /** 関連者（コア以外）の関連ポイント合計の分布: 平均・母標準偏差で z を取り、ヒートを付ける */
+  const relatedTieValues: number[] = [];
   for (const id of people) {
-    if (coreSet.has(id)) continue;
-    const v = coreTieStrength.get(id) ?? 0;
-    minT = Math.min(minT, v);
-    maxT = Math.max(maxT, v);
+    if (!coreSet.has(id)) relatedTieValues.push(coreTieStrength.get(id) ?? 0);
   }
-  if (minT === Infinity) {
-    minT = 0;
-    maxT = 1;
-  } else if (minT === maxT) {
-    minT = Math.max(0, minT - 1);
-    maxT = maxT + 1;
+  const nRel = relatedTieValues.length;
+  let tieMean = 0;
+  for (const x of relatedTieValues) tieMean += x;
+  tieMean = nRel > 0 ? tieMean / nRel : 0;
+  let tieVarSum = 0;
+  for (const x of relatedTieValues) {
+    const d = x - tieMean;
+    tieVarSum += d * d;
   }
+  const tieStd = nRel > 1 ? Math.sqrt(tieVarSum / nRel) : 0;
+
+  const tieHeatFromSum = (sum: number): number => {
+    if (nRel <= 1 || tieStd === 0) return 0.5;
+    const z = (sum - tieMean) / tieStd;
+    // 平均付近は中間色、±2σ 前後でグラデーション端に寄せる
+    return Math.max(0, Math.min(1, 0.5 + z / 4));
+  };
 
   const memberCount = members.length;
   const nextNodes: Node[] = [];
@@ -463,7 +470,7 @@ export const buildDiagramNodesAndEdges = (
       });
     } else {
       const v = coreTieStrength.get(id) ?? 0;
-      const tieHeat = maxT > minT ? (v - minT) / (maxT - minT) : 0.5;
+      const tieHeat = tieHeatFromSum(v);
       nextNodes.push({
         id,
         position: p,
