@@ -5,7 +5,9 @@ from app.db import SessionLocal
 from app.schemas import DiagramCoreNetworkOut, DiagramRelationPairOut
 
 
-def core_network(center_titles: list[str], *, total_point_gt: int = 1) -> DiagramCoreNetworkOut:
+def core_network(
+    center_titles: list[str], *, total_point_gt: int = 1
+) -> DiagramCoreNetworkOut:
     db = SessionLocal()
     try:
         rows = crud.aggregate_core_network_edges(

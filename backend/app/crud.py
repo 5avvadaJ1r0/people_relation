@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from urllib.parse import quote
 
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import and_, case, delete, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.model import Person, Relation, WikiHumanCache
@@ -144,7 +144,8 @@ def aggregate_core_network_edges(
 ) -> list[tuple[str, str, int]]:
     """中心人物タイトル集合に触れる relation を無向ペア集約して返す。
 
-    `LEAST`/`GREATEST` で正規化し、`SUM(point) > total_point_gt` かつ `point <> 0` の行のみ。
+    ペアは辞書順で正規化（PostgreSQL の LEAST/GREATEST と同等）。SQLite でも動くよう CASE で実装。
+    `SUM(point) > total_point_gt` かつ `point <> 0` の行のみ。
     """
     if len(center_titles) < 2 or len(center_titles) > 5:
         return []
@@ -155,8 +156,8 @@ def aggregate_core_network_edges(
 
     p1 = aliased(Person)
     p2 = aliased(Person)
-    pair_a = func.least(p1.title, p2.title)
-    pair_b = func.greatest(p1.title, p2.title)
+    pair_a = case((p1.title <= p2.title, p1.title), else_=p2.title)
+    pair_b = case((p1.title <= p2.title, p2.title), else_=p1.title)
     total = func.sum(Relation.point)
 
     rows = db.execute(
