@@ -12,7 +12,7 @@
   "dependencies": {
     "@xyflow/react": "^12.10.2",
     "dayjs": "^1.11.20",
-    "html-to-image": "^1.11.11",
+    "html-to-image": "^1.11.13",
     "path-browserify": "^1.0.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
