@@ -120,6 +120,28 @@ FastAPI標準のエラー応答を返します。
 | total_point   | number | yes | `forward_point + reverse_point`  |
 
 
+### CoreNetworkIn（相関図エッジ取得リクエスト）
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| center_titles | string[] | yes | 中心人物の `person.title` を **2〜5件**（重複は除去）。空要素は除去後に件数チェックする。 |
+| total_point_gt | int | no | デフォルト `1`。`GROUP BY` 後の条件 `HAVING SUM(relation.point) > total_point_gt`（**0 以上**）。大きいほど表示ペアは厳しくなる。 |
+
+### DiagramRelationPairOut
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| person1 | string | yes | 無向ペアの片側（`LEAST(p1.title, p2.title)`） |
+| person2 | string | yes | 無向ペアのもう片側（`GREATEST(p1.title, p2.title)`） |
+| total_point | int | yes | 該当する `relation` 行の `point` 合計 |
+
+### DiagramCoreNetworkOut
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| center_titles | string[] | yes | リクエストで正規化後の中心人物タイトル一覧 |
+| pairs | DiagramRelationPairOut[] | yes | リクエストの `total_point_gt` に対し `SUM(point) > total_point_gt` かつ `point <> 0` を満たす無向ペア（`total_point` 降順） |
+
 ### PersonSearchOut
 
 
@@ -156,8 +178,10 @@ FastAPI標準のエラー応答を返します。
 | GET | `/api/v1/ready` | DB 接続確認 |
 | POST | `/api/v1/relation` | 関係の upsert |
 | GET | `/api/v1/person/search` | 保存済み人物検索 |
+| GET | `/api/v1/person/search_executed_masters` | 主体者実行済み人物のみ検索（相関図の中心人物選定用） |
 | GET | `/api/v1/person/{person_id}/relations` | 主体→関連（最大50件） |
 | GET | `/api/v1/person/{person_id}/relations_aggregate` | 双方向集計（最大50件→total でソート） |
+| POST | `/api/v1/diagram/core_network` | 中心人物（2〜5名の title）に基づく無向ペア集約エッジ取得 |
 | GET | `/api/v1/wiki/person_search_sse` | Wikipedia 検索 + 人物判定（SSE） |
 | GET | `/api/v1/wiki/extract_relations_sse` | 2-hop 抽出（SSE） |
 
@@ -383,6 +407,66 @@ sequenceDiagram
     API-->>FE: 200 PersonSearchOut[]
 ```
 
+### 4-2) 人物検索（主体者実行済みのみ）
+
+`GET /api/v1/person/search_executed_masters?name=...`
+
+- **用途**: `person.executed_as_master = true` の人物のみを、`/person/search` と同様の **名前部分一致**で検索する（相関図タブで中心人物を選ぶ用途）。
+- **クエリ**
+  - `name` (string, 必須, min_length=1)
+- **上限**: 20件
+- **認証**: なし
+- **レスポンス 200**: `PersonSearchOut[]`（スキーマは `GET /api/v1/person/search` と同一）
+- **レート制限**: 特になし（通常の読み取り API と同様）
+- **エラー**
+  - **422**: `name` 未指定/空文字など
+
+#### SQL（実装の要点）
+
+- `SELECT ... FROM person WHERE name ILIKE %name% AND executed_as_master IS TRUE LIMIT 20`
+
+### 4-3) 相関図エッジ取得（中心人物 2〜5 名）
+
+`POST /api/v1/diagram/core_network`
+
+- **用途**: 指定した中心人物の `person.title` に **少なくとも一方が一致する** `relation` 行を対象に、無向ペアへ集約したエッジ一覧を返す（フロントは React Flow のデータソースとして利用）。
+- **認証**: なし
+- **Content-Type**: `application/json`
+- **リクエストボディ**: `CoreNetworkIn`
+
+```json
+{
+  "center_titles": ["AAA", "BBB", "CCC"],
+  "total_point_gt": 1
+}
+```
+
+- **リクエストパラメータ**
+  - `center_titles` (string[], 必須): 2〜5 名のユニークな `title`
+  - `total_point_gt` (int, 任意, デフォルト `1`, 最小 `0`): 集約後の合計点がこの値**より大きい**ペアだけを返す。値を**上げる**と表示されるペアは**減る**（しきい値が厳しくなる）。**下げる**とペアは**増える**。
+- **レスポンス 200**: `DiagramCoreNetworkOut`
+
+```json
+{
+  "center_titles": ["AAA", "BBB", "CCC"],
+  "pairs": [
+    {
+      "person1": "AAA",
+      "person2": "DDD",
+      "total_point": 12
+    }
+  ]
+}
+```
+
+- **集約ロジック（DB）**
+  - `relation` を `master/slave` の `person.title` として `LEAST`/`GREATEST` で無向ペア化し、`SUM(point)` を取る
+  - `WHERE relation.point <> 0` かつ `(master.title IN (:titles) OR slave.title IN (:titles))`
+  - `GROUP BY` 後 `HAVING SUM(point) > total_point_gt`（`total_point_gt` はリクエスト値、省略時は `1`）
+  - `ORDER BY total_point DESC`
+- **レート制限**: 特になし
+- **エラー**
+  - **422**: 中心人物が 2〜5 名のユニークな `title` に正規化できない場合、`total_point_gt` が負、または JSON 形式不正
 
 
 ### 5) 関係取得（主体者→関連者）
@@ -666,6 +750,7 @@ sequenceDiagram
 
 ## 変更履歴
 
+- 2026-05-13: **相関図タブ**向けに **`GET /api/v1/person/search_executed_masters`**（`executed_as_master=true` のみ検索）と **`POST /api/v1/diagram/core_network`**（中心人物 2〜5 名の無向ペア集約）を追加。既存の人物・関係エンドポイントの挙動は変更しない。
 - 2026-05-12: 2-hop 抽出を **`app.services.wiki.extract.two_hop`** サブパッケージに分割（`models`・`quota`・`fetcher`・`ranker`・`reverse`・`filter`・`pipeline`）。公開 API（`extract_two_hop_relations` / `collapse_relations_by_canonical_article` / 型定義）は `__init__.py` で再エクスポート、import パスは従来どおり。テスト側のモンキーパッチも分割後の責務モジュール（`two_hop.quota` / `two_hop.filter`）に追従。
 - 2026-05-12: Wikipedia 連携コードを **`app.services.wiki`** パッケージに整理（`wiki/parser`・`wiki/api`・`wiki/limiter`・`wiki/extract`・`wiki/resolver` および `wiki/human.py`）。旧トップレベル `app.services.wiki_*` 単体モジュールは廃止。
 - 2026-05-12: `app.services.wiki.human` の **Redis キーを正規化タイトル基準**に統一（`_` と空白の表記ゆれでキャッシュミスしない）。ライブバッチの **`wiki_human_cache` はチャンク単位 1 `commit`**。タイトル単位ライブの **`Semaphore` 同時数を 8**。外向き HTTP は **`httpx.HTTPError`**、Redis `MGET` は **`redis.RedisError`** で捕捉してログ。

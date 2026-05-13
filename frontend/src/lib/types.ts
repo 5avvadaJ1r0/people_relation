@@ -51,6 +51,17 @@ export type ApiRelation = {
   point: number;
 };
 
+export type DiagramRelationPair = {
+  person1: string;
+  person2: string;
+  total_point: number;
+};
+
+export type DiagramCoreNetworkOut = {
+  center_titles: string[];
+  pairs: DiagramRelationPair[];
+};
+
 export type ApiRelationAggregate = {
   master: {
     id: number;

@@ -7,6 +7,7 @@ from app.services.persons import (
     list_person_relations,
     list_person_relations_aggregate,
     search_persons,
+    search_persons_executed_as_master_only,
 )
 
 router = APIRouter(prefix="/person", tags=["person"])
@@ -15,6 +16,12 @@ router = APIRouter(prefix="/person", tags=["person"])
 @router.get("/search", response_model=list[PersonSearchOut])
 def person_search(name: str = Query(min_length=1)) -> list[PersonSearchOut]:
     return search_persons(name)
+
+
+@router.get("/search_executed_masters", response_model=list[PersonSearchOut])
+def person_search_executed_masters(name: str = Query(min_length=1)) -> list[PersonSearchOut]:
+    """executed_as_master が true の人物のみを検索する（相関図の中心人物選定用）。"""
+    return search_persons_executed_as_master_only(name)
 
 
 @router.get("/{person_id}/relations", response_model=list[RelationOut])

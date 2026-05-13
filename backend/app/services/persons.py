@@ -5,6 +5,27 @@ from app.db import SessionLocal
 from app.schemas import PersonOut, PersonSearchOut, RelationAggregateOut, RelationOut
 
 
+def search_persons_executed_as_master_only(name: str) -> list[PersonSearchOut]:
+    """主体者として実行済み（executed_as_master）の人物のみを名前で検索する。"""
+    db = SessionLocal()
+    try:
+        persons = crud.search_persons_executed_as_master(db, name=name, limit=20)
+        return [
+            PersonSearchOut(
+                id=p.id,
+                name=p.name,
+                title=p.title,
+                url=p.url,
+                has_relations=p.executed_as_master_at is not None
+                or bool(p.executed_as_master),
+                executed_as_master_at=p.executed_as_master_at,
+            )
+            for p in persons
+        ]
+    finally:
+        db.close()
+
+
 def search_persons(name: str) -> list[PersonSearchOut]:
     db = SessionLocal()
     try:

@@ -25,6 +25,7 @@ import type {
   WikiSearchItem,
 } from "../lib/types";
 import urlQrCodeSvg from "../assets/images/svg/url-qr-code.svg";
+import { DiagramTabPanel } from "./DiagramTabPanel";
 
 type Selected = {
   wiki: WikiSearchItem;
@@ -52,7 +53,10 @@ const devLog = (...args: unknown[]) => {
   if (import.meta.env.DEV) console.log(...args);
 };
 
+type MainTab = "list" | "diagram";
+
 export const App = () => {
+  const [mainTab, setMainTab] = useState<MainTab>("list");
   const [query, setQuery] = useState("");
   const [busyCount, setBusyCount] = useState(0);
   const busy = busyCount > 0;
@@ -443,7 +447,9 @@ export const App = () => {
 
   return (
     <>
-      <div className="container">
+      <div
+        className={`container${mainTab === "diagram" ? " containerDiagramLayout" : ""}`}
+      >
         <div className="header">
           <div>
             <div className="title">著名人関連者リストアップ</div>
@@ -456,8 +462,44 @@ export const App = () => {
           </div>
         </div>
 
-        <div className="grid">
-          <div className="card">
+        <nav className="mainTabBar" aria-label="機能の切り替え">
+          <div className="mainTabList" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              id="main-tab-list"
+              aria-selected={mainTab === "list"}
+              aria-controls="main-panel-list"
+              tabIndex={mainTab === "list" ? 0 : -1}
+              className={`mainTab ${mainTab === "list" ? "mainTabActive" : ""}`}
+              onClick={() => setMainTab("list")}
+            >
+              関連者リストアップ
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="main-tab-diagram"
+              aria-selected={mainTab === "diagram"}
+              aria-controls="main-panel-diagram"
+              tabIndex={mainTab === "diagram" ? 0 : -1}
+              className={`mainTab ${mainTab === "diagram" ? "mainTabActive" : ""}`}
+              onClick={() => setMainTab("diagram")}
+            >
+              相関図作成
+            </button>
+          </div>
+        </nav>
+
+        {mainTab === "list" ? (
+          <div
+            id="main-panel-list"
+            role="tabpanel"
+            aria-labelledby="main-tab-list"
+            className="mainTabPanel"
+          >
+            <div className="grid">
+              <div className="card">
             <h2>❶ 主体者入力</h2>
             <div className="row">
               <div className="textInputWrap">
@@ -575,9 +617,9 @@ export const App = () => {
                 </div>
               </div>
             )}
-          </div>
+              </div>
 
-          <div className="card" ref={detailRef}>
+              <div className="card" ref={detailRef}>
             <h2>
               ❸ 主体者・関連者
               <span className="subtitle">
@@ -705,8 +747,19 @@ export const App = () => {
                 </button>
               </div>
             )}
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div
+            id="main-panel-diagram"
+            role="tabpanel"
+            aria-labelledby="main-tab-diagram"
+            className="mainTabPanel"
+          >
+            <DiagramTabPanel />
+          </div>
+        )}
       </div>
 
       {busy ? (

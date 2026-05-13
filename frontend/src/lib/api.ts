@@ -1,4 +1,10 @@
-import type { ApiPerson, ApiRelation, ApiRelationAggregate, RelationIn } from "./types";
+import type {
+  ApiPerson,
+  ApiRelation,
+  ApiRelationAggregate,
+  DiagramCoreNetworkOut,
+  RelationIn,
+} from "./types";
 import { resolveApiBaseUrl } from "./apiBase";
 
 const API_BASE = resolveApiBaseUrl();
@@ -19,6 +25,51 @@ export const apiSearchPerson = async (
   const res = await fetch(url, { signal: init?.signal });
   if (!res.ok) throw new Error(`apiSearchPerson failed: ${res.status}`);
   return await parseJsonOrThrow<ApiPerson[]>(res, "apiSearchPerson");
+};
+
+/** executed_as_master が true の人物のみ検索（相関図の中心人物選定用） */
+export const apiSearchPersonExecutedMasters = async (
+  name: string,
+  init?: { signal?: AbortSignal }
+): Promise<ApiPerson[]> => {
+  const url = `${API_BASE}/v1/person/search_executed_masters?name=${encodeURIComponent(name)}`;
+  const res = await fetch(url, { signal: init?.signal });
+  if (!res.ok) throw new Error(`apiSearchPersonExecutedMasters failed: ${res.status}`);
+  return await parseJsonOrThrow<ApiPerson[]>(res, "apiSearchPersonExecutedMasters");
+};
+
+export const apiPostDiagramCoreNetwork = async (
+  body: { center_titles: string[]; total_point_gt?: number },
+  init?: { signal?: AbortSignal }
+): Promise<DiagramCoreNetworkOut> => {
+  const url = `${API_BASE}/v1/diagram/core_network`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: init?.signal,
+  });
+  if (!res.ok) {
+    const ct = res.headers.get("content-type") ?? "";
+    let detail = "";
+    try {
+      if (ct.includes("application/json")) {
+        const j = (await res.json()) as { detail?: unknown };
+        if (j.detail !== undefined) {
+          detail =
+            typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+        }
+      } else {
+        detail = (await res.text()).slice(0, 240).replace(/\s+/g, " ");
+      }
+    } catch {
+      detail = "";
+    }
+    throw new Error(
+      `apiPostDiagramCoreNetwork failed: ${res.status}${detail ? ` — ${detail}` : ""}`,
+    );
+  }
+  return await parseJsonOrThrow<DiagramCoreNetworkOut>(res, "apiPostDiagramCoreNetwork");
 };
 
 export const apiGetRelations = async (personId: number): Promise<ApiRelation[]> => {

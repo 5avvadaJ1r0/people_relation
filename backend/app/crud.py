@@ -3,9 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from urllib.parse import quote
 
-from sqlalchemy import and_, delete, select
-from sqlalchemy.orm import aliased
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from app.model import Person, Relation, WikiHumanCache
 
@@ -125,6 +124,61 @@ def upsert_relation(
 
     rel.point = point
     return rel
+
+
+def search_persons_executed_as_master(
+    db: Session, *, name: str, limit: int = 20
+) -> list[Person]:
+    q = f"%{name.strip()}%"
+    return list(
+        db.scalars(
+            select(Person)
+            .where(Person.name.ilike(q), Person.executed_as_master.is_(True))
+            .limit(limit)
+        ).all()
+    )
+
+
+def aggregate_core_network_edges(
+    db: Session, *, center_titles: list[str], total_point_gt: int = 1
+) -> list[tuple[str, str, int]]:
+    """中心人物タイトル集合に触れる relation を無向ペア集約して返す。
+
+    `LEAST`/`GREATEST` で正規化し、`SUM(point) > total_point_gt` かつ `point <> 0` の行のみ。
+    """
+    if len(center_titles) < 2 or len(center_titles) > 5:
+        return []
+
+    titles = list(dict.fromkeys(t.strip() for t in center_titles if t.strip()))
+    if len(titles) < 2:
+        return []
+
+    p1 = aliased(Person)
+    p2 = aliased(Person)
+    pair_a = func.least(p1.title, p2.title)
+    pair_b = func.greatest(p1.title, p2.title)
+    total = func.sum(Relation.point)
+
+    rows = db.execute(
+        select(pair_a, pair_b, total)
+        .select_from(Relation)
+        .join(p1, p1.id == Relation.master_person_id)
+        .join(p2, p2.id == Relation.slave_person_id)
+        .where(
+            Relation.point != 0,
+            or_(p1.title.in_(titles), p2.title.in_(titles)),
+        )
+        .group_by(pair_a, pair_b)
+        .having(total > total_point_gt)
+        .order_by(total.desc())
+    ).all()
+
+    out: list[tuple[str, str, int]] = []
+    for a, b, tp in rows:
+        if tp is None:
+            continue
+        out.append((str(a), str(b), int(tp)))
+    return out
 
 
 def search_persons(
