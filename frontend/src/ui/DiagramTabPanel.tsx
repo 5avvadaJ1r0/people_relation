@@ -49,7 +49,16 @@ const IconCircleMinus = () => (
   </svg>
 );
 
-export const DiagramTabPanel = () => {
+export type DiagramTabPanelProps = {
+  /** 関連者リスト側から中心人物を追加するときに渡す（`requestId` は同一人物の再追加でも発火させるための nonce） */
+  queueCenterPerson?: { person: ApiPerson; requestId: number } | null;
+  onQueueCenterPersonApplied?: () => void;
+};
+
+export const DiagramTabPanel = ({
+  queueCenterPerson = null,
+  onQueueCenterPersonApplied,
+}: DiagramTabPanelProps) => {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [matches, setMatches] = useState<ApiPerson[]>([]);
@@ -137,6 +146,21 @@ export const DiagramTabPanel = () => {
     setHighlightIdx(-1);
     window.setTimeout(() => queryInputRef.current?.focus(), 0);
   };
+
+  useEffect(() => {
+    if (!queueCenterPerson) return;
+    const { person } = queueCenterPerson;
+    setCenter((prev) => {
+      if (prev.some((c) => c.id === person.id)) return prev;
+      if (prev.length >= MAX_DIAGRAM_CENTER) return prev;
+      return [...prev, person];
+    });
+    setQuery("");
+    setMatches([]);
+    setSuggestFetched(false);
+    setHighlightIdx(-1);
+    onQueueCenterPersonApplied?.();
+  }, [queueCenterPerson, onQueueCenterPersonApplied]);
 
   const removeCenter = (id: number) => {
     setCenter((prev) => prev.filter((c) => c.id !== id));

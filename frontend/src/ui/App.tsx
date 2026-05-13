@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   apiGetRelationsAggregate,
   apiPostRelations,
@@ -57,6 +57,13 @@ type MainTab = "list" | "diagram";
 
 export const App = () => {
   const [mainTab, setMainTab] = useState<MainTab>("list");
+  const [diagramQueueCenterPerson, setDiagramQueueCenterPerson] = useState<{
+    person: ApiPerson;
+    requestId: number;
+  } | null>(null);
+  const onDiagramQueueCenterPersonApplied = useCallback(() => {
+    setDiagramQueueCenterPerson(null);
+  }, []);
   const [query, setQuery] = useState("");
   const [busyCount, setBusyCount] = useState(0);
   const busy = busyCount > 0;
@@ -396,12 +403,46 @@ export const App = () => {
       setProgress({ phase: "キャッシュ保存", done: 0, total: 1 });
       const posted = await apiPostRelations(payload, master.url);
       if (session !== detailSessionRef.current) return;
+      const principalRow = posted.find((x) => x.master.url === master.url)
+        ?.master;
       const executedAt =
-        posted.find((x) => x.master.url === master.url)?.master
-          .executed_as_master_at ??
+        principalRow?.executed_as_master_at ??
         posted[0]?.master.executed_as_master_at ??
         null;
       setMasterExecutedAt(executedAt ?? null);
+
+      /**
+       * Wikipedia 経路では選択直後の `serverPerson` に `has_relations` が付いていないことがある。
+       * 保存成功後はレスポンスの主体者で同期しないと「主体者を相関図に追加」がずっと無効のままになる。
+       */
+      if (principalRow) {
+        const person: ApiPerson = {
+          id: principalRow.id,
+          name: principalRow.name,
+          title: principalRow.title,
+          url: principalRow.url,
+          has_relations: true,
+          executed_as_master_at: principalRow.executed_as_master_at ?? null,
+        };
+        setSelected((prev) => {
+          if (!prev || prev.wiki.title !== title) return prev;
+          return { ...prev, serverPerson: person };
+        });
+      } else {
+        const refreshed = await ensureServerPersonForWikiTitle(
+          title,
+          [],
+          extractSignal,
+        );
+        if (session !== detailSessionRef.current) return;
+        if (refreshed) {
+          setSelected((prev) => {
+            if (!prev || prev.wiki.title !== title) return prev;
+            return { ...prev, serverPerson: refreshed };
+          });
+        }
+      }
+
       setProgress({ phase: "キャッシュ保存", done: 1, total: 1 });
     } catch (e: unknown) {
       if (isAbortError(e) || session !== detailSessionRef.current) return;
@@ -745,6 +786,30 @@ export const App = () => {
                 >
                   再実行
                 </button>
+                <button
+                  type="button"
+                  className="success"
+                  disabled={
+                    busy ||
+                    !isPrincipalRelationsCacheSource(selected.serverPerson)
+                  }
+                  title={
+                    !isPrincipalRelationsCacheSource(selected.serverPerson)
+                      ? "主体者として実行済みの人物のみ相関図の中心に追加できます"
+                      : undefined
+                  }
+                  onClick={() => {
+                    const p = selected.serverPerson;
+                    if (!p || !isPrincipalRelationsCacheSource(p)) return;
+                    setDiagramQueueCenterPerson({
+                      person: p,
+                      requestId: Date.now(),
+                    });
+                    setMainTab("diagram");
+                  }}
+                >
+                  主体者を相関図に追加
+                </button>
               </div>
             )}
               </div>
@@ -757,7 +822,10 @@ export const App = () => {
           className="mainTabPanel"
           hidden={mainTab !== "diagram"}
         >
-          <DiagramTabPanel />
+          <DiagramTabPanel
+            queueCenterPerson={diagramQueueCenterPerson}
+            onQueueCenterPersonApplied={onDiagramQueueCenterPersonApplied}
+          />
         </div>
       </div>
 
