@@ -239,6 +239,16 @@ a {
   flex-wrap: wrap;
 }
 
+.diagramFlowCardHeaderRight {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 12px 20px;
+  margin-left: auto;
+}
+
 .diagramTwoCoreLayoutBar {
   display: inline-flex;
   flex-direction: row;
@@ -293,6 +303,7 @@ a {
   margin-top: 12px;
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   justify-content: space-between;
@@ -303,6 +314,16 @@ a {
     justify-content: flex-start;
     align-items: flex-start
   }
+}
+
+.diagramThresholdShareError {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.diagramThresholdShareUnsupported {
+  flex: 1 1 100%;
+  width: 100%;
 }
 
 .diagramThresholdLabel {
@@ -333,6 +354,11 @@ a {
       flex-shrink: 0;
       display: block;
     }
+  }
+
+  .diagramShareBtn {
+    display: inline-flex;
+    align-items: center;
   }
 }
 
@@ -508,6 +534,46 @@ a {
 
 .diagramFlowWrap .react-flow__nodes {
   z-index: 1;
+}
+
+.diagramShareBtn {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+
+  &:hover:not(:disabled) {
+    border-color: rgba(17, 24, 39, 0.18);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.diagramShareError {
+  font-size: 11px;
+  color: var(--danger);
+  text-align: left;
+  max-width: 100%;
+}
+
+.diagramShareUnsupported {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+  text-align: left;
+  background: rgba(248, 250, 252, 0.95);
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  max-width: 100%;
 }
 
 .diagramNodeCore {

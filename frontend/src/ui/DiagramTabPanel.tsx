@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   apiPostDiagramCoreNetwork,
   apiSearchPersonExecutedMasters,
 } from "../lib/api";
+import { canShareDiagramImage } from "../lib/correlationDiagramExport";
 import type { ApiPerson } from "../lib/types";
 import type { DiagramRow, TwoCoreLayout } from "../lib/diagramGraph";
-import { CorrelationDiagramView } from "./CorrelationDiagramView";
+import {
+  CorrelationDiagramView,
+  type CorrelationDiagramViewHandle,
+} from "./CorrelationDiagramView";
 
 /** 相関図の中心人物として選べる最大人数（API `CoreNetworkIn` と一致） */
 const MAX_DIAGRAM_CENTER = 10;
@@ -49,6 +53,20 @@ const IconCircleMinus = () => (
   </svg>
 );
 
+/** Font Awesome Solid「arrow-up-from-bracket」相当（Font Awesome Free 6.5.2 / CC BY 4.0） */
+const IconArrowUpFromBracket = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={18}
+    height={18}
+    viewBox="0 0 512 512"
+    fill="currentColor"
+    aria-hidden
+  >
+    <path d="M246.6 9.4c-12.5-12.5-32.8-12.5-45.3 0l-128 128c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 109.3 192 320c0 17.7 14.3 32 32 32s32-14.3 32-32l0-210.7 73.4 73.4c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3l-128-128zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64c0 53 43 96 96 96l256 0c53 0 96-43 96-96l0-64c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 64c0 17.7-14.3 32-32 32L96 448c-17.7 0-32-14.3-32-32l0-64z" />
+  </svg>
+);
+
 export type DiagramTabPanelProps = {
   /** 関連者リスト側から中心人物を追加するときに渡す（`requestId` は同一人物の再追加でも発火させるための nonce） */
   queueCenterPerson?: { person: ApiPerson; requestId: number } | null;
@@ -75,6 +93,13 @@ export const DiagramTabPanel = ({
   /** 中心 2 名の相関図でのみ利用（縦＝上・下 / 横＝左・右） */
   const [twoCoreLayout, setTwoCoreLayout] = useState<TwoCoreLayout>("vertical");
   const queryInputRef = useRef<HTMLInputElement | null>(null);
+  const diagramViewRef = useRef<CorrelationDiagramViewHandle>(null);
+  const [diagramShareReady, setDiagramShareReady] = useState(false);
+  const [diagramShareBusy, setDiagramShareBusy] = useState(false);
+  const [diagramShareError, setDiagramShareError] = useState<string | null>(
+    null,
+  );
+  const webShareImageSupported = useMemo(() => canShareDiagramImage(), []);
 
   const selectableMatches = useMemo(
     () => matches.filter((p) => !center.some((c) => c.id === p.id)),
@@ -203,6 +228,43 @@ export const DiagramTabPanel = ({
   const thresholdUiActive = members.length > 0 && canBuild;
   const canExpandRelated = totalPointGt > 0 && thresholdUiActive;
   const canShrinkRelated = rows.length > 0 && thresholdUiActive;
+
+  const hasDiagram = useMemo(
+    () => members.length > 0 || rows.length > 0,
+    [members.length, rows.length],
+  );
+
+  const onShareDiagramImage = useCallback(() => {
+    setDiagramShareError(null);
+    try {
+      const p = diagramViewRef.current?.shareAsImage();
+      if (p) {
+        setDiagramShareBusy(true);
+        void p
+          .catch((e: unknown) => {
+            if (e instanceof DOMException && e.name === "AbortError") {
+              return;
+            }
+            setDiagramShareError(
+              e instanceof Error ? e.message : String(e),
+            );
+          })
+          .finally(() => setDiagramShareBusy(false));
+      }
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        return;
+      }
+      setDiagramShareError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasDiagram) {
+      setDiagramShareReady(false);
+      setDiagramShareError(null);
+    }
+  }, [hasDiagram]);
 
   return (
     <div className="diagramTabGrid">
@@ -433,43 +495,50 @@ export const DiagramTabPanel = ({
                 相関図
               </h2>
               {members.length === 2 ? (
-                <div
-                  className="diagramTwoCoreLayoutBar"
-                  role="group"
-                  aria-label="中心2名の並び"
-                >
-                  <span className="diagramTwoCoreLayoutLabel">中心の並び</span>
-                  <div className="diagramSegmented">
-                    <button
-                      type="button"
-                      className={
-                        twoCoreLayout === "vertical"
-                          ? "diagramSegmentedBtn diagramSegmentedBtnActive"
-                          : "diagramSegmentedBtn"
-                      }
-                      aria-pressed={twoCoreLayout === "vertical"}
-                      onClick={() => setTwoCoreLayout("vertical")}
-                    >
-                      縦
-                    </button>
-                    <button
-                      type="button"
-                      className={
-                        twoCoreLayout === "horizontal"
-                          ? "diagramSegmentedBtn diagramSegmentedBtnActive"
-                          : "diagramSegmentedBtn"
-                      }
-                      aria-pressed={twoCoreLayout === "horizontal"}
-                      onClick={() => setTwoCoreLayout("horizontal")}
-                    >
-                      横
-                    </button>
+                <div className="diagramFlowCardHeaderRight">
+                  <div
+                    className="diagramTwoCoreLayoutBar"
+                    role="group"
+                    aria-label="中心2名の並び"
+                  >
+                    <span className="diagramTwoCoreLayoutLabel">中心の並び</span>
+                    <div className="diagramSegmented">
+                      <button
+                        type="button"
+                        className={
+                          twoCoreLayout === "vertical"
+                            ? "diagramSegmentedBtn diagramSegmentedBtnActive"
+                            : "diagramSegmentedBtn"
+                        }
+                        aria-pressed={twoCoreLayout === "vertical"}
+                        onClick={() => setTwoCoreLayout("vertical")}
+                      >
+                        縦
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          twoCoreLayout === "horizontal"
+                            ? "diagramSegmentedBtn diagramSegmentedBtnActive"
+                            : "diagramSegmentedBtn"
+                        }
+                        aria-pressed={twoCoreLayout === "horizontal"}
+                        onClick={() => setTwoCoreLayout("horizontal")}
+                      >
+                        横
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : null}
             </div>
             {members.length > 0 ? (
               <div className="diagramThresholdBar">
+                {diagramShareError ? (
+                  <div className="diagramShareError diagramThresholdShareError">
+                    {diagramShareError}
+                  </div>
+                ) : null}
                 <div className="diagramThresholdLabel">
                   関連値の合計が{" "}
                   <strong className="diagramThresholdN">{totalPointGt}</strong>{" "}
@@ -508,14 +577,36 @@ export const DiagramTabPanel = ({
                     <IconCircleMinus />
                     関連者を減らす
                   </button>
+                  {hasDiagram && webShareImageSupported ? (
+                    <button
+                      type="button"
+                      className="diagramShareBtn"
+                      disabled={
+                        busy ||
+                        !diagramShareReady ||
+                        diagramShareBusy
+                      }
+                      onClick={() => void onShareDiagramImage()}
+                    >
+                      <IconArrowUpFromBracket />
+                      {diagramShareBusy ? "準備中…" : "相関図を共有"}
+                    </button>
+                  ) : null}
                 </div>
+                {hasDiagram && !webShareImageSupported ? (
+                  <div className="diagramShareUnsupported diagramThresholdShareUnsupported">
+                    この環境では Web Share API（画像）が使えません。
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
           <CorrelationDiagramView
+            ref={diagramViewRef}
             members={members}
             rows={rows}
             twoCoreLayout={twoCoreLayout}
+            onDiagramShareReadyChange={setDiagramShareReady}
           />
         </div>
       </div>
