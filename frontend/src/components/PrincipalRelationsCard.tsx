@@ -1,4 +1,4 @@
-import { isPrincipalRelationsCacheSource } from "../lib/wikiPersonMatch";
+import { isExecutedPrincipalForDiagram, isPrincipalRelationsCacheSource } from "../lib/wikiPersonMatch";
 import { WIKI_MAX_RELATED_DISPLAY } from "../wikiDisplayConstants";
 import type { ApiPerson } from "../lib/types";
 import type {
@@ -113,7 +113,7 @@ export const PrincipalRelationsCard = ({
             {displayRelations.map((r) => {
               const sp = r.slavePerson;
               const canAddSlaveToDiagram =
-                sp != null && isPrincipalRelationsCacheSource(sp);
+                sp != null && isExecutedPrincipalForDiagram(sp);
               return (
               <tr key={`${r.slave.url}-${r.totalPoint}-${r.forwardPoint}`}>
                 <td>
@@ -135,7 +135,7 @@ export const PrincipalRelationsCard = ({
                     ) : null}
                     <button
                       type="button"
-                      className="principalRunAsMasterBtn"
+                      className="principalRelatedSearchBtn"
                       disabled={busy}
                       onClick={() => runAsMaster(r.slave.name, r.slave.title)}
                     >

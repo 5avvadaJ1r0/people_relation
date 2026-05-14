@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type { PeopleRelationAppModel } from "../peopleRelationAppModel";
 import type { ApiPerson, WikiSearchItem } from "../lib/types";
 import {
-  isPrincipalRelationsCacheSource,
+  isExecutedPrincipalForDiagram,
   normWikiTitleForMatch,
   pickServerPersonForWikiTitle,
 } from "../lib/wikiPersonMatch";
@@ -73,24 +73,28 @@ export const usePeopleRelationApp = (): PeopleRelationAppModel => {
       const wikiMastersByPageId = search.wikiMastersByPageId;
 
       const fromResolve = wikiMastersByPageId[item.pageid];
-      if (fromResolve && isPrincipalRelationsCacheSource(fromResolve)) {
+      if (fromResolve && isExecutedPrincipalForDiagram(fromResolve)) {
         return fromResolve;
       }
 
       if (s && wikiRowIsCurrentPrincipal(item, s.wiki) && relations.length > 0) {
         const fromSel = s.serverPerson;
-        if (fromSel && isPrincipalRelationsCacheSource(fromSel)) return fromSel;
+        if (fromSel && isExecutedPrincipalForDiagram(fromSel)) return fromSel;
         if (
           fromSel &&
           detail.principalRelationPostSaved &&
           detail.source === "wikipedia"
         ) {
-          return { ...fromSel, has_relations: true };
+          return {
+            ...fromSel,
+            has_relations: true,
+            is_executed_master: true,
+          };
         }
       }
 
       const fromPick = pickServerPersonForWikiTitle(item.title, serverMatches);
-      if (fromPick && isPrincipalRelationsCacheSource(fromPick)) return fromPick;
+      if (fromPick && isExecutedPrincipalForDiagram(fromPick)) return fromPick;
 
       return undefined;
     },

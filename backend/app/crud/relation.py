@@ -9,6 +9,19 @@ from sqlalchemy.orm import Session, aliased
 from app.model import Relation
 
 
+def person_ids_with_forward_relation(db: Session, *, person_ids: list[int]) -> set[int]:
+    """`relation.master_person_id` に少なくとも 1 行ある person.id の集合。"""
+    if not person_ids:
+        return set()
+    uniq: list[int] = list(dict.fromkeys(person_ids))
+    rows = db.scalars(
+        select(Relation.master_person_id)
+        .where(Relation.master_person_id.in_(uniq))
+        .distinct()
+    ).all()
+    return {int(x) for x in rows}
+
+
 def list_slave_person_ids_for_master(db: Session, *, master_id: int) -> list[int]:
     """指定 master からの forward エッジ先（slave の person id）を列挙する。"""
     return list(

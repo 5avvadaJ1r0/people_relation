@@ -67,65 +67,38 @@ export const usePrincipalSearchPhase = ({
       let wikiResultCount = 0;
       let serverMatchCount = 0;
       try {
-        const wikiRaw = consumeWikiPersonSearchSse(effectiveQuery, {
-          signal: searchSignal,
-          onProgress: (p) => {
-            if (isStaleSearch()) return;
-            setProgress(p);
-          },
-          onError: (m) => {
-            if (isStaleSearch()) return;
-            setError(m);
-          },
-        });
-
-        const wikiP = wikiRaw
-          .then((msg) => {
-            if (isStaleSearch()) return;
-            setWikiResults(msg.wiki);
-            setWikiEmptyMessage(
-              msg.emptyMessage ??
-                (msg.wiki.length === 0 ? "該当人物はいません" : null),
-            );
-            wikiResultCount = msg.wiki.length;
-          })
-          .catch((e: unknown) => {
-            if (isAbortError(e) || isStaleSearch()) return;
-            setWikiResults([]);
-            setWikiEmptyMessage("該当人物はいません");
-            wikiResultCount = 0;
-            setError(e instanceof Error ? e.message : String(e));
-          });
-
-        const resolveP = wikiRaw
-          .then(async (msg) => {
-            if (isStaleSearch()) return;
-            if (msg.wiki.length === 0) {
-              setWikiMastersByPageId({});
-              return;
-            }
-            try {
-              const out = await apiResolveWikiMasters(
-                msg.wiki.map((w) => ({ title: w.title, pageid: w.pageid })),
-                { signal: searchSignal },
-              );
+        let wikiMsg: { wiki: WikiSearchItem[]; emptyMessage: string | null } | null =
+          null;
+        try {
+          wikiMsg = await consumeWikiPersonSearchSse(effectiveQuery, {
+            signal: searchSignal,
+            onProgress: (p) => {
               if (isStaleSearch()) return;
-              const next: Record<number, ApiPerson> = {};
-              for (const row of out.items) {
-                if (row.person?.has_relations) {
-                  next[row.pageid] = row.person;
-                }
-              }
-              setWikiMastersByPageId(next);
-            } catch (e: unknown) {
-              if (isAbortError(e) || isStaleSearch()) return;
-              setWikiMastersByPageId({});
-            }
-          })
-          .catch((e: unknown) => {
-            if (isAbortError(e) || isStaleSearch()) return;
-            setWikiMastersByPageId({});
+              setProgress(p);
+            },
+            onError: (m) => {
+              if (isStaleSearch()) return;
+              setError(m);
+            },
           });
+        } catch (e: unknown) {
+          if (isAbortError(e) || isStaleSearch()) return;
+          setWikiResults([]);
+          setWikiEmptyMessage("該当人物はいません");
+          wikiResultCount = 0;
+          setError((prev) => prev ?? (e instanceof Error ? e.message : String(e)));
+        }
+
+        if (isStaleSearch()) return;
+
+        if (wikiMsg) {
+          setWikiResults(wikiMsg.wiki);
+          setWikiEmptyMessage(
+            wikiMsg.emptyMessage ??
+              (wikiMsg.wiki.length === 0 ? "該当人物はいません" : null),
+          );
+          wikiResultCount = wikiMsg.wiki.length;
+        }
 
         const serverP = apiSearchPerson(effectiveQuery, {
           signal: searchSignal,
@@ -144,7 +117,31 @@ export const usePrincipalSearchPhase = ({
             );
           });
 
-        await Promise.all([wikiP, serverP, resolveP]);
+        const resolveP = (async () => {
+          if (!wikiMsg || wikiMsg.wiki.length === 0) {
+            if (!isStaleSearch()) setWikiMastersByPageId({});
+            return;
+          }
+          try {
+            const out = await apiResolveWikiMasters(
+              wikiMsg.wiki.map((w) => ({ title: w.title, pageid: w.pageid })),
+              { signal: searchSignal },
+            );
+            if (isStaleSearch()) return;
+            const next: Record<number, ApiPerson> = {};
+            for (const row of out.items) {
+              if (row.person?.is_executed_master) {
+                next[row.pageid] = row.person;
+              }
+            }
+            setWikiMastersByPageId(next);
+          } catch (e: unknown) {
+            if (isAbortError(e) || isStaleSearch()) return;
+            setWikiMastersByPageId({});
+          }
+        })();
+
+        await Promise.all([serverP, resolveP]);
       } catch (e: unknown) {
         if (isAbortError(e) || isStaleSearch()) return;
         setError(e instanceof Error ? e.message : String(e));

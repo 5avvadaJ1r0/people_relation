@@ -5,7 +5,7 @@
 1. **検索（❶〜❷）**
    ブラウザは **MediaWiki / Wikidata に直接アクセスしない**。
    - Wikipedia 側の検索・各候補の **人物判定（Wikidata）** は **`GET /api/v1/wiki/person_search_sse`**（SSE）で実行され、進捗イベントが返る。
-   - あわせて保存済み DB 人物のあたり付け用に **`GET /api/v1/person/search`** を **並列**で呼ぶ。Wikipedia の結果が返ったあと、各行の記事タイトルから canonical URL を組み立てて **`POST /api/v1/person/resolve_wiki_masters`** で **主体者実行済み**の行を一括突合する（❷「相関図に追加」の主経路）。人物選択後は **記事タイトルおよび括弧を除いた表示名**でも `person/search` を追加で呼び、`frontend/src/lib/wikiPersonMatch.ts` で突き合わせる。
+   - あわせて保存済み DB 人物のあたり付け用に **`GET /api/v1/person/search`** と、Wikipedia 結果確定後の **`POST /api/v1/person/resolve_wiki_masters`** を **並列**で呼ぶ（SSE 完了後に両者を起動）。各行の記事タイトルから canonical URL を組み立てて resolve が **主体者実行済み**の行を一括突合する（❷「相関図に追加」の主経路）。人物選択後は **記事タイトルおよび括弧を除いた表示名**でも `person/search` を追加で呼び、`frontend/src/lib/wikiPersonMatch.ts` で突き合わせる。
 
 2. **関連抽出（❸）**
    主体記事の **本文・wikitext 解析・2-hop 集計・人物判定** はすべて **`GET /api/v1/wiki/extract_relations_sse`**（SSE）でバックエンドが実行する。クエリ `max_related` で関連者の上限（既定 100、上限 500）を指定できる。

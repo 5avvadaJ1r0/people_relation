@@ -876,9 +876,9 @@ input[type="text"]:focus-visible {
   gap: 12px;
 }
 
-/* 関連者テーブル「相関図に追加」「関連者を探す」（主体者として再検索）: 2カラムレイアウト（981px〜）のときのみ表示（.grid と同じ閾値） */
+/* 関連者テーブル「相関図に追加」「関連者を探す」: 2カラムレイアウト（981px〜）のときのみ表示（.grid と同じ閾値） */
 .principalDiagramAddLink,
-.principalRunAsMasterBtn,
+.principalRelatedSearchBtn,
 .principalWikiSelectLink {
   display: none;
   padding: 0;
@@ -891,7 +891,7 @@ input[type="text"]:focus-visible {
 }
 
 .principalDiagramAddLink:disabled,
-.principalRunAsMasterBtn:disabled,
+.principalRelatedSearchBtn:disabled,
 .principalWikiSelectLink:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -899,7 +899,7 @@ input[type="text"]:focus-visible {
 
 @media (min-width: 981px) {
   .principalDiagramAddLink,
-  .principalRunAsMasterBtn {
+  .principalRelatedSearchBtn {
     display: inline-block;
   }
 }

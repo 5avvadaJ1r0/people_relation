@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   displayPersonNameFromWikiTitle,
   findPostedMasterMatchingExtractMaster,
+  isExecutedPrincipalForDiagram,
   isPrincipalRelationsCacheSource,
   mergeRelationViewsWithPostedPersons,
   normWikiTitleForMatch,
@@ -10,8 +11,11 @@ import {
 } from "./wikiPersonMatch";
 import type { ApiPerson, ApiRelation, RelationView } from "./types";
 
-const person = (over: Partial<ApiPerson> & Pick<ApiPerson, "id" | "name" | "title" | "url">): ApiPerson => ({
+const person = (
+  over: Partial<ApiPerson> & Pick<ApiPerson, "id" | "name" | "title" | "url">,
+): ApiPerson => ({
   has_relations: false,
+  is_executed_master: false,
   ...over,
 });
 
@@ -41,7 +45,13 @@ describe("titleFromJaWikipediaUrl", () => {
 describe("pickServerPersonForWikiTitle", () => {
   it("name / title が Wikipedia 記事タイトルと一致すれば拾う", () => {
     const rows = [
-      person({ id: 1, name: "別名", title: "堀江貴文", url: "https://example.com/x", has_relations: false }),
+      person({
+        id: 1,
+        name: "別名",
+        title: "堀江貴文",
+        url: "https://example.com/x",
+        has_relations: false,
+      }),
     ];
     expect(pickServerPersonForWikiTitle("堀江貴文", rows)?.id).toBe(1);
   });
@@ -59,14 +69,15 @@ describe("pickServerPersonForWikiTitle", () => {
     expect(pickServerPersonForWikiTitle("堀江貴文", rows)?.id).toBe(55);
   });
 
-  it("同じ表示名で複数ヒットするときは has_relations 真（主体者）を優先する", () => {
+  it("同じ表示名で複数ヒットするときは is_executed_master 真を優先する", () => {
     const rows = [
       person({
         id: 1,
         name: "山田太郎",
         title: "山田太郎",
         url: "https://example.com/slave",
-        has_relations: false,
+        has_relations: true,
+        is_executed_master: false,
       }),
       person({
         id: 2,
@@ -74,19 +85,21 @@ describe("pickServerPersonForWikiTitle", () => {
         title: "山田太郎 (政治家)",
         url: "https://ja.wikipedia.org/wiki/%E5%B1%B1%E7%94%B0%E5%A4%AA%E9%83%8E_(%E6%94%BF%E6%B2%BB%E5%AE%B6)",
         has_relations: true,
+        is_executed_master: true,
       }),
     ];
     expect(pickServerPersonForWikiTitle("山田太郎 (政治家)", rows)?.id).toBe(2);
   });
 
-  it("同一タイトルに複数行がマッチするとき先頭が slave でも主体者を返す", () => {
+  it("同一タイトルに複数行がマッチするとき先頭が slave でも主体者実行済みを返す", () => {
     const rows = [
       person({
         id: 10,
         name: "佐藤花子",
         title: "佐藤花子",
         url: "https://example.com/a",
-        has_relations: false,
+        has_relations: true,
+        is_executed_master: false,
       }),
       person({
         id: 11,
@@ -94,6 +107,7 @@ describe("pickServerPersonForWikiTitle", () => {
         title: "佐藤花子",
         url: "https://example.com/b",
         has_relations: true,
+        is_executed_master: true,
       }),
     ];
     expect(pickServerPersonForWikiTitle("佐藤花子", rows)?.id).toBe(11);
@@ -119,6 +133,7 @@ describe("mergeRelationViewsWithPostedPersons", () => {
           title: "甲T",
           url: "https://example.com/a",
           has_relations: true,
+          is_executed_master: true,
           executed_as_master_at: null,
         },
         slave: {
@@ -127,6 +142,7 @@ describe("mergeRelationViewsWithPostedPersons", () => {
           title: "乙T",
           url: "https://example.com/b",
           has_relations: true,
+          is_executed_master: false,
           executed_as_master_at: null,
         },
         point: 1,
@@ -145,20 +161,22 @@ describe("findPostedMasterMatchingExtractMaster", () => {
     title: string,
     url: string,
     has_relations: boolean,
+    is_executed_master: boolean,
   ): ApiRelation["master"] => ({
     id,
     name,
     title,
     url,
     has_relations,
+    is_executed_master,
     executed_as_master_at: null,
   });
 
   it("master.url が一致すればその master を返す", () => {
     const posted: ApiRelation[] = [
       {
-        master: masterOut(1, "甲", "甲T", "https://ja.wikipedia.org/wiki/%E7%94%B2", true),
-        slave: masterOut(2, "乙", "乙T", "https://example.com/b", false),
+        master: masterOut(1, "甲", "甲T", "https://ja.wikipedia.org/wiki/%E7%94%B2", true, true),
+        slave: masterOut(2, "乙", "乙T", "https://example.com/b", false, false),
         point: 1,
       },
     ];
@@ -175,8 +193,9 @@ describe("findPostedMasterMatchingExtractMaster", () => {
           "甲 正規",
           "https://ja.wikipedia.org/wiki/%E7%94%B2_%E6%AD%A3%E8%A6%8F",
           true,
+          true,
         ),
-        slave: masterOut(2, "乙", "乙T", "https://example.com/b", false),
+        slave: masterOut(2, "乙", "乙T", "https://example.com/b", false, false),
         point: 1,
       },
     ];
@@ -190,7 +209,7 @@ describe("findPostedMasterMatchingExtractMaster", () => {
 });
 
 describe("isPrincipalRelationsCacheSource", () => {
-  it("has_relations が真のときのみキャッシュ対象", () => {
+  it("has_relations かつ is_executed_master が真のときのみキャッシュ対象", () => {
     expect(isPrincipalRelationsCacheSource(undefined)).toBe(false);
     expect(
       isPrincipalRelationsCacheSource(
@@ -200,8 +219,21 @@ describe("isPrincipalRelationsCacheSource", () => {
           title: "堀江貴文",
           url: "https://ja.wikipedia.org/wiki/%E5%A0%80%E6%B1%9F%E8%B2%B4%E6%96%87",
           has_relations: false,
-        })
-      )
+          is_executed_master: true,
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isPrincipalRelationsCacheSource(
+        person({
+          id: 54,
+          name: "未実行主体",
+          title: "未実行主体",
+          url: "https://ja.wikipedia.org/wiki/%E6%9C%AA%E5%AE%9F%E8%A1%8C",
+          has_relations: true,
+          is_executed_master: false,
+        }),
+      ),
     ).toBe(false);
     expect(
       isPrincipalRelationsCacheSource(
@@ -211,9 +243,40 @@ describe("isPrincipalRelationsCacheSource", () => {
           title: "西村博之",
           url: "https://ja.wikipedia.org/wiki/%E8%A5%BF%E6%9D%91%E5%8D%9A%E4%B9%8B",
           has_relations: true,
+          is_executed_master: true,
           executed_as_master_at: "2026-05-12T03:58:15.582Z",
-        })
-      )
+        }),
+      ),
     ).toBe(true);
+  });
+});
+
+describe("isExecutedPrincipalForDiagram", () => {
+  it("is_executed_master のみを見る", () => {
+    expect(isExecutedPrincipalForDiagram(undefined)).toBe(false);
+    expect(
+      isExecutedPrincipalForDiagram(
+        person({
+          id: 1,
+          name: "甲",
+          title: "甲",
+          url: "https://example.com/a",
+          has_relations: false,
+          is_executed_master: true,
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isExecutedPrincipalForDiagram(
+        person({
+          id: 2,
+          name: "乙",
+          title: "乙",
+          url: "https://example.com/b",
+          has_relations: true,
+          is_executed_master: false,
+        }),
+      ),
+    ).toBe(false);
   });
 });

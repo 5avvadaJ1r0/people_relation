@@ -33,6 +33,7 @@ class PersonOut(BaseModel):
     title: str
     url: str
     has_relations: bool
+    is_executed_master: bool
     executed_as_master_at: datetime | None = None
 
 
@@ -56,6 +57,7 @@ class PersonSearchOut(BaseModel):
     title: str
     url: str
     has_relations: bool
+    is_executed_master: bool
     executed_as_master_at: datetime | None = None
 
 

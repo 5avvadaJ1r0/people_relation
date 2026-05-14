@@ -265,6 +265,7 @@ export const usePrincipalDetailPhase = ({
             title: principalMaster.title,
             url: principalMaster.url,
             has_relations: principalMaster.has_relations,
+            is_executed_master: principalMaster.is_executed_master,
             executed_as_master_at: principalMaster.executed_as_master_at ?? null,
           };
           setSelected((prev) => {

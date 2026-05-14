@@ -95,7 +95,8 @@ FastAPI標準のエラー応答を返します。
 | name  | string  | yes   | 人物名                                     |
 | title | string  | yes   | Wikipedia上のページ表示名                        |
 | url   | string  | yes   | WikipediaページURL                         |
-| has_relations | boolean | yes | `executed_as_master_at` が非 null、または `executed_as_master` が true のとき true（`PersonSearchOut.has_relations` と同義） |
+| has_relations | boolean | yes | `relation` に当該人物が **主体（`master_person_id`）** として少なくとも 1 行あるとき true |
+| is_executed_master | boolean | yes | `executed_as_master_at` が非 null、または `executed_as_master` が true のとき true（主体者として関係保存フローを実行したフラグ） |
 | executed_as_master_at | string (ISO 8601) | null可 | 主体者として関係保存を実行した日時（`person.executed_as_master_at`）。未実行なら null |
 
 
@@ -152,7 +153,8 @@ FastAPI標準のエラー応答を返します。
 | name          | string  | yes | 人物名             |
 | title         | string  | yes | 表示名             |
 | url           | string  | yes | WikipediaページURL |
-| has_relations | boolean | yes | **実装**: `executed_as_master_at` が非 null、または `executed_as_master` が true のとき true。フィールド名は `has_relations` だが、「主体者として関係保存を実行したことがあるか」を表す（`person` 行の有無・関連件数とは一致しない場合がある） |
+| has_relations | boolean | yes | `relation` に当該人物が **主体（`master_person_id`）** として少なくとも 1 行あるとき true |
+| is_executed_master | boolean | yes | `executed_as_master_at` が非 null、または `executed_as_master` が true のとき true |
 | executed_as_master_at | string (ISO 8601) | null可 | 主体者として実行した日時（未実行なら null） |
 
 
@@ -294,6 +296,7 @@ sequenceDiagram
       "title": "AAA BBB",
       "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
       "has_relations": true,
+      "is_executed_master": true,
       "executed_as_master_at": "2026-05-12T10:00:00"
     },
     "slave": {
@@ -301,7 +304,8 @@ sequenceDiagram
       "name": "BBB",
       "title": "CCC DDD",
       "url": "https://ja.wikipedia.org/wiki/%E4%B8%AD%E5%B1%85%E6%AD%A3%E5%BA%83",
-      "has_relations": false,
+      "has_relations": true,
+      "is_executed_master": false,
       "executed_as_master_at": null
     },
     "point": 10
@@ -309,7 +313,7 @@ sequenceDiagram
 ]
 ```
 
-`has_relations` は `PersonSearchOut` と同じ意味（主体者として関係保存を実行したことがあるか）。`executed_as_master_at` は主体者として関係保存を実行した日時（未設定は `null`）。`POST` 直後に主体が更新された場合のみ値が入ることが多い。
+`has_relations` は **主体としての `relation` 行の有無**。`is_executed_master` は **主体者としての実行フラグ**（`executed_as_master` / `executed_as_master_at`）。`executed_as_master_at` は主体者として関係保存を実行した日時（未設定は `null`）。`POST` 直後に主体が更新された場合のみ値が入ることが多い。
 
 #### エラー
 
@@ -384,12 +388,13 @@ sequenceDiagram
     "title": "AAA BBB",
     "url": "https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89",
     "has_relations": true,
+    "is_executed_master": true,
     "executed_as_master_at": "2026-05-12T10:00:00"
   }
 ]
 ```
 
-> 例の整合: `has_relations: true` のときは通常 `executed_as_master_at` も非 null（主体者として `POST /api/v1/relation` が `executed_master_url` 付きで実行済み）。`has_relations: false` の例は `executed_as_master_at: null` とする（関連者としてのみ `person` に存在する場合など）。
+> 例の整合: 主体として `relation` がある人物は `has_relations: true`。`executed_master_url` 無しで保存のみした場合は `is_executed_master: false` のまま `has_relations: true` になり得る。関連者としてのみ `person` に存在し主体の `relation` が無い場合は `has_relations: false`。
 
 #### エラー
 
@@ -407,7 +412,7 @@ sequenceDiagram
     FE->>API: GET /api/v1/person/search?name=...
     API->>DB: SELECT person WHERE name ILIKE %name% LIMIT 20
     DB-->>API: Person[]
-    Note over API: crud.search_persons の第2要素を has_relations に格納（executed_as_master 系フラグ）
+    Note over API: person ごとに relation の主体有無と executed フラグを付与して PersonSearchOut[]
     API-->>FE: 200 PersonSearchOut[]
 ```
 
@@ -454,13 +459,13 @@ sequenceDiagram
 ```json
 {
   "items": [
-    { "pageid": 12345, "person": { "id": 1, "name": "…", "title": "…", "url": "https://ja.wikipedia.org/wiki/...", "has_relations": true, "executed_as_master_at": "..." } },
+    { "pageid": 12345, "person": { "id": 1, "name": "…", "title": "…", "url": "https://ja.wikipedia.org/wiki/...", "has_relations": true, "is_executed_master": true, "executed_as_master_at": "..." } },
     { "pageid": 67890, "person": null }
   ]
 }
 ```
 
-- **突合ロジック**: 各 `title` について `crud.wiki_ja_article_url(title)` と同一キーで `person.url` を検索し、`executed_as_master` 相当の行のみ `PersonSearchOut` を返す。該当なしは `person: null`。
+- **突合ロジック**: 各 `title` について `crud.wiki_ja_article_url(title)` と同一キーで `person.url` を検索し、`executed_as_master` 相当の行のみ `PersonSearchOut` を返す。該当なしは `person: null`。返却人物の `has_relations` は **当該 person が主体の `relation` が 1 行以上あるか**、`is_executed_master` は常に true（突合対象が実行済み主体のみのため）。
 - **レート制限**: 特になし（読み取りのみ）
 - **エラー**
   - **422**: `items` が空、51 件超、タイトル不正など
@@ -531,6 +536,7 @@ sequenceDiagram
       "title": "AAA BBB",
       "url": "https://ja.wikipedia.org/wiki/...",
       "has_relations": true,
+      "is_executed_master": true,
       "executed_as_master_at": null
     },
     "slave": {
@@ -539,6 +545,7 @@ sequenceDiagram
       "title": "CCC DDD",
       "url": "https://ja.wikipedia.org/wiki/...",
       "has_relations": false,
+      "is_executed_master": false,
       "executed_as_master_at": null
     },
     "point": 10
@@ -596,6 +603,7 @@ sequenceDiagram
       "title": "AAA BBB",
       "url": "https://ja.wikipedia.org/wiki/...",
       "has_relations": true,
+      "is_executed_master": true,
       "executed_as_master_at": null
     },
     "slave": {
@@ -604,6 +612,7 @@ sequenceDiagram
       "title": "CCC DDD",
       "url": "https://ja.wikipedia.org/wiki/...",
       "has_relations": false,
+      "is_executed_master": false,
       "executed_as_master_at": null
     },
     "forward_point": 10,
@@ -764,15 +773,15 @@ sequenceDiagram
 
 #### 8-3) フロント（React）の初回選択とキャッシュ（参照実装）
 
-本リポジトリの `frontend/src/App.tsx` / `frontend/src/lib/wikiPersonMatch.ts` は概ね次のとおり（`isPrincipalRelationsCacheSource` は **`PersonSearchOut.has_relations` と同義**）。
+本リポジトリの `frontend/src/App.tsx` / `frontend/src/lib/wikiPersonMatch.ts` は概ね次のとおり（`isPrincipalRelationsCacheSource` は **`PersonSearchOut.has_relations` が真かつ `is_executed_master` が真**のとき真。主体としての行はあるが主体者未実行の人物はキャッシュ表示しない）。
 
-- **検索送信時**: `GET /api/v1/wiki/person_search_sse` と `GET /api/v1/person/search` を並列実行し、Wikipedia 結果取得後に **`POST /api/v1/person/resolve_wiki_masters`** で各行の記事 URL と DB 上の主体者を一括突合する（❷「相関図に追加」の主経路）。
+- **検索送信時**: まず **`GET /api/v1/wiki/person_search_sse`** で Wikipedia 結果を確定し、その後 **`GET /api/v1/person/search`** と **`POST /api/v1/person/resolve_wiki_masters`** を並列実行する（❷「相関図に追加」の主経路は resolve）。
 - **❷で Wikipedia 行を選んだとき**（「関連者を探す」）: 検索語と Wikipedia の記事タイトルが一致しないと `person/search` の結果に主体が載らないことがあるため、**記事タイトルおよび括弧を除いた表示名**でも `GET /api/v1/person/search` を追加で呼び、`Person.url` 由来のタイトル正規化込みで同一人物を突き合わせる。
-- **`has_relations` が true** のときのみ、初回から **`GET /api/v1/person/{id}/relations_aggregate`** でキャッシュ表示する（Wikipedia 抽出 SSE は呼ばない）。
-- **`has_relations` が false** のときは、初回から **`GET /api/v1/wiki/extract_relations_sse`** で Wikipedia 抽出する（関連者としてだけ DB にいる人物は「キャッシュ表示」対象外）。
+- **`has_relations` が true かつ `is_executed_master` が true** のときのみ、初回から **`GET /api/v1/person/{id}/relations_aggregate`** でキャッシュ表示する（Wikipedia 抽出 SSE は呼ばない）。
+- 上記以外（`has_relations` が false、または **`is_executed_master` が false**）のときは、初回から **`GET /api/v1/wiki/extract_relations_sse`** で Wikipedia 抽出する。
 - **「再実行」**: 常に `extract_relations_sse` を呼ぶ。
-- **「キャッシュ再取得」**: `has_relations` が true のときのみボタンを表示し、`relations_aggregate` を再取得する。
-- **❷ 検索結果行の「相関図に追加」**（「関連者を探す」の左）: 次のいずれかを満たす Wikipedia 行に表示する。クリックで相関図タブへキュー投入する（投入対象は `PersonSearchOut.has_relations` が true の `ApiPerson`）。
+- **「キャッシュ再取得」**: `has_relations` かつ `is_executed_master` が true のときのみボタンを表示し、`relations_aggregate` を再取得する。
+- **❷ 検索結果行の「相関図に追加」**（「関連者を探す」の左）: 次のいずれかを満たす Wikipedia 行に表示する。クリックで相関図タブへキュー投入する（投入対象は **`PersonSearchOut.is_executed_master` が true** の `ApiPerson`）。
   - **(1)** `POST /api/v1/person/resolve_wiki_masters` の応答で、当該 `pageid` の行に **主体者として実行済み**の `person` が付いているとき（**未選択でも**可。`person/search` の 20 件に依存しない）。
   - **(1b)** 突合 API で見つからない場合のフォールバックとして、当該検索で得た `GET /api/v1/person/search` の結果と記事タイトル等を突き合わせ、主体者として実行済みの人物が取れるとき。
   - **(2)** 当該行が **現在選択中の主体者**（`pageid` 一致または正規化 `title` 一致）であり、❸ で **関連者が 1 名以上**リストアップ済みで、かつその主体が主体者実行済みのとき。
@@ -799,11 +808,11 @@ sequenceDiagram
 
 ## 変更履歴
 
+- 2026-05-14: **`PersonOut` / `PersonSearchOut` の意味整理**: `has_relations` を **`relation` に主体としての行が存在するか** に変更し、**`is_executed_master`**（`executed_as_master` / `executed_as_master_at`）を追加。フロントの **❸ キャッシュ初回読み・「キャッシュ再取得」** は `has_relations` **および** `is_executed_master`（`isPrincipalRelationsCacheSource`）。❷「相関図に追加」等の主体者実行導線は `is_executed_master` を参照する。
 - 2026-05-14: **`POST /api/v1/person/resolve_wiki_masters`** を追加。Wikipedia 検索結果の各行（記事タイトル → canonical `Person.url`）と **主体者として実行済み**の `person` を一括突合し、❷「相関図に追加」を `GET /person/search` の件数・名前一致に依存させない。
 - 2026-05-14: **❷「相関図に追加」** の表示条件を整理（検索突合のみで主体者実行済みなら未選択でも表示／選択＋関連者1名以上で表示。実装は `usePeopleRelationApp` の `getDiagramPersonIfReadyForWikiRow`）。
-- 2026-05-14: Wikipedia 抽出後の **`POST /relation` 応答から主体 `PersonOut` を特定**するとき、SSE の `master.url` と応答の `master.url` が正規化差で一致しない場合でも、**記事タイトル（ja.wikipedia の URL 由来タイトル含む）**で突き合わせ `serverPerson.has_relations` を更新する（`findPostedMasterMatchingExtractMaster`）。
+- 2026-05-14: Wikipedia 抽出後の **`POST /relation` 応答から主体 `PersonOut` を特定**するとき、SSE の `master.url` と応答の `master.url` が正規化差で一致しない場合でも、**記事タイトル（ja.wikipedia の URL 由来タイトル含む）**で突き合わせ `serverPerson` の `has_relations` / `is_executed_master` を更新する（`findPostedMasterMatchingExtractMaster`）。
 - 2026-05-14: 抽出完了時の **`setSelected` で `prev.wiki.title` と抽出引数 `title` を `normWikiTitleForMatch` で比較**し、表記ゆれで `serverPerson` が更新されず ❷「相関図に追加」が出ない問題を防ぐ。
-- 2026-05-14: **`PersonOut` に `has_relations` を追加**（`executed_as_master_at` 非 null または `executed_as_master` が true のとき true。`PersonSearchOut` と同義）。`RelationOut` / `RelationAggregateOut` および `GET /api/v1/person/{id}/relations` / `relations_aggregate` の `master` / `slave` に反映。
 - 2026-05-13: **相関図タブ**向けに **`GET /api/v1/person/search_executed_masters`**（`executed_as_master=true` のみ検索）と **`POST /api/v1/diagram/core_network`**（中心人物 2〜10 名の無向ペア集約）を追加。既存の人物・関係エンドポイントの挙動は変更しない。
 - 2026-05-12: 2-hop 抽出を **`app.services.wiki.extract.two_hop`** サブパッケージに分割（`models`・`quota`・`fetcher`・`ranker`・`reverse`・`filter`・`pipeline`）。公開 API（`extract_two_hop_relations` / `collapse_relations_by_canonical_article` / 型定義）は `__init__.py` で再エクスポート、import パスは従来どおり。テスト側のモンキーパッチも分割後の責務モジュール（`two_hop.quota` / `two_hop.filter`）に追従。
 - 2026-05-12: Wikipedia 連携コードを **`app.services.wiki`** パッケージに整理（`wiki/parser`・`wiki/api`・`wiki/limiter`・`wiki/extract`・`wiki/resolver` および `wiki/human.py`）。旧トップレベル `app.services.wiki_*` 単体モジュールは廃止。

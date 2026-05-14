@@ -6,6 +6,7 @@ from urllib.parse import quote
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.crud.relation import person_ids_with_forward_relation
 from app.model import Person, WikiHumanCache
 
 
@@ -112,19 +113,21 @@ def search_persons_executed_as_master(
 
 def search_persons(
     db: Session, *, name: str, limit: int = 20
-) -> list[tuple[Person, bool]]:
+) -> list[tuple[Person, bool, bool]]:
     q = f"%{name.strip()}%"
     persons = db.scalars(select(Person).where(Person.name.ilike(q)).limit(limit)).all()
     if not persons:
         return []
 
-    out: list[tuple[Person, bool]] = []
+    ids = [p.id for p in persons]
+    with_fwd = person_ids_with_forward_relation(db, person_ids=ids)
+    out: list[tuple[Person, bool, bool]] = []
     for p in persons:
-        # 「前回実行あり」は主体者として実行した人のみを対象にする
+        has_rows = p.id in with_fwd
         executed = getattr(p, "executed_as_master_at", None) is not None or bool(
             getattr(p, "executed_as_master", False)
         )
-        out.append((p, executed))
+        out.append((p, has_rows, executed))
     return out
 
 

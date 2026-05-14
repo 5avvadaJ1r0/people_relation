@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { ApiPerson } from "../../lib/types";
 import type { MainAppTab } from "../../appScreenTypes";
-import { isPrincipalRelationsCacheSource } from "../../lib/wikiPersonMatch";
+import { isExecutedPrincipalForDiagram } from "../../lib/wikiPersonMatch";
 
 export const useMainTabAndDiagram = () => {
   const [mainTab, setMainTab] = useState<MainAppTab>("list");
@@ -15,7 +15,7 @@ export const useMainTabAndDiagram = () => {
 
   const queueCenterPersonIfExecutedMaster = useCallback(
     (person: ApiPerson | undefined | null) => {
-      if (!person || !isPrincipalRelationsCacheSource(person)) return;
+      if (!person || !isExecutedPrincipalForDiagram(person)) return;
       setDiagramQueueCenterPerson({
         person,
         requestId: Date.now(),

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from app.crud.person import wiki_ja_article_url
+from app.db import engine
 
 
 def test_health(client: TestClient) -> None:
@@ -94,6 +96,7 @@ def test_resolve_wiki_masters_returns_master_by_article_url(client: TestClient) 
     assert row["person"] is not None
     assert row["person"]["url"] == url_master
     assert row["person"]["has_relations"] is True
+    assert row["person"]["is_executed_master"] is True
 
 
 def test_diagram_core_network_validation(client: TestClient) -> None:
@@ -283,7 +286,9 @@ def test_post_relation_and_person_endpoints(client: TestClient) -> None:
     assert r_search.status_code == 200
     found = r_search.json()
     assert len(found) >= 1
-    assert any(p["id"] == master_id and p["has_relations"] is True for p in found)
+    master_row = next(p for p in found if p["id"] == master_id)
+    assert master_row["has_relations"] is True
+    assert master_row["is_executed_master"] is True
 
     r_rel = client.get(f"/api/v1/person/{master_id}/relations")
     assert r_rel.status_code == 200
@@ -292,7 +297,9 @@ def test_post_relation_and_person_endpoints(client: TestClient) -> None:
     assert rels[0]["point"] == 3
     assert rels[0]["slave"]["name"] == "乙"
     assert rels[0]["master"]["has_relations"] is True
-    assert rels[0]["slave"]["has_relations"] is False
+    assert rels[0]["master"]["is_executed_master"] is True
+    assert rels[0]["slave"]["has_relations"] is True
+    assert rels[0]["slave"]["is_executed_master"] is False
 
     r_agg = client.get(f"/api/v1/person/{master_id}/relations_aggregate")
     assert r_agg.status_code == 200
@@ -301,7 +308,8 @@ def test_post_relation_and_person_endpoints(client: TestClient) -> None:
     assert agg[0]["total_point"] == 5
     assert agg[0]["forward_point"] == 3
     assert agg[0]["reverse_point"] == 2
-    assert agg[0]["slave"]["has_relations"] is False
+    assert agg[0]["slave"]["has_relations"] is True
+    assert agg[0]["slave"]["is_executed_master"] is False
 
 
 def test_post_relation_replaces_edges_when_executed_master_url(
@@ -392,6 +400,7 @@ def test_person_search_slave_only_has_relations_false(
     rows = r_search.json()
     slave_row = next(x for x in rows if x["id"] == slave_id)
     assert slave_row["has_relations"] is False
+    assert slave_row["is_executed_master"] is False
 
 
 def test_post_relation_without_executed_master_url(client: TestClient) -> None:
@@ -409,4 +418,114 @@ def test_post_relation_without_executed_master_url(client: TestClient) -> None:
     assert r_search.status_code == 200
     found = r_search.json()
     assert len(found) == 1
-    assert found[0]["has_relations"] is False
+    assert found[0]["has_relations"] is True
+    assert found[0]["is_executed_master"] is False
+
+
+def test_resolve_wiki_masters_non_executed_returns_null(client: TestClient) -> None:
+    """主体者フラグが立っていない人物は resolve の突合対象外。"""
+    title = "NoExecWikiX"
+    url = wiki_ja_article_url(title)
+    r = client.post(
+        "/api/v1/relation",
+        json=[
+            {
+                "master": {"name": "N主", "url": url, "title": title},
+                "slave": {
+                    "name": "N従",
+                    "url": "https://example.com/n-sl",
+                    "title": "N従",
+                },
+                "point": 1,
+            },
+        ],
+    )
+    assert r.status_code == 200
+    r2 = client.post(
+        "/api/v1/person/resolve_wiki_masters",
+        json={"items": [{"title": title, "pageid": 77001}]},
+    )
+    assert r2.status_code == 200
+    row = r2.json()["items"][0]
+    assert row["pageid"] == 77001
+    assert row["person"] is None
+
+
+def test_resolve_wiki_masters_duplicate_titles_same_person(client: TestClient) -> None:
+    title = "DupTitleX"
+    url = wiki_ja_article_url(title)
+    client.post(
+        "/api/v1/relation",
+        json=[
+            {
+                "master": {"name": "D主", "url": url, "title": title},
+                "slave": {
+                    "name": "D従",
+                    "url": "https://example.com/d-sl",
+                    "title": "D従",
+                },
+                "point": 1,
+            },
+        ],
+        params={"executed_master_url": url},
+    )
+    r = client.post(
+        "/api/v1/person/resolve_wiki_masters",
+        json={
+            "items": [
+                {"title": title, "pageid": 10},
+                {"title": title, "pageid": 11},
+            ],
+        },
+    )
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert len(items) == 2
+    assert items[0]["person"] is not None
+    assert items[0]["person"]["id"] == items[1]["person"]["id"]
+
+
+def test_resolve_wiki_masters_executed_but_no_forward_rows(
+    client: TestClient,
+) -> None:
+    """フラグだけ残り relation が無いときは has_relations が false。"""
+    title = "StaleExecX"
+    url = wiki_ja_article_url(title)
+    r = client.post(
+        "/api/v1/relation",
+        json=[
+            {
+                "master": {"name": "S主", "url": url, "title": title},
+                "slave": {
+                    "name": "S従",
+                    "url": "https://example.com/s-sl",
+                    "title": "S従",
+                },
+                "point": 1,
+            },
+        ],
+        params={"executed_master_url": url},
+    )
+    assert r.status_code == 200
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM relation"))
+    r2 = client.post(
+        "/api/v1/person/resolve_wiki_masters",
+        json={"items": [{"title": title, "pageid": 88001}]},
+    )
+    assert r2.status_code == 200
+    person = r2.json()["items"][0]["person"]
+    assert person is not None
+    assert person["has_relations"] is False
+    assert person["is_executed_master"] is True
+
+
+def test_resolve_wiki_masters_empty_items_422(client: TestClient) -> None:
+    r = client.post("/api/v1/person/resolve_wiki_masters", json={"items": []})
+    assert r.status_code == 422
+
+
+def test_resolve_wiki_masters_too_many_items_422(client: TestClient) -> None:
+    items = [{"title": "T", "pageid": i} for i in range(51)]
+    r = client.post("/api/v1/person/resolve_wiki_masters", json={"items": items})
+    assert r.status_code == 422

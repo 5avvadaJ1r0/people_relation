@@ -46,8 +46,8 @@ export const pickServerPersonForWikiTitle = (
     return fromUrl != null && normWikiTitleForMatch(fromUrl) === nt;
   });
   if (matches.length === 0) return undefined;
-  /** `/person/search` は関連者のみの人物も返す。先頭一致が slave だと相関図リンクが出ないため主体者を優先 */
-  const master = matches.find((p) => p.has_relations);
+  /** `/person/search` は関連者のみの人物も返す。先頭一致が slave だと相関図リンクが出ないため主体者実行済みを優先 */
+  const master = matches.find((p) => p.is_executed_master);
   return master ?? matches[0];
 };
 
@@ -85,11 +85,12 @@ export const apiPersonFromPersonOutJson = (
   title: p.title,
   url: p.url,
   has_relations: p.has_relations,
+  is_executed_master: p.is_executed_master,
   executed_as_master_at: p.executed_as_master_at ?? null,
 });
 
 /**
- * Wikipedia 抽出直後の `RelationView` に、`POST /relation` 応答の人物情報（`has_relations` 等）をマージする。
+ * Wikipedia 抽出直後の `RelationView` に、`POST /relation` 応答の人物情報（`has_relations` / `is_executed_master` 等）をマージする。
  */
 export const mergeRelationViewsWithPostedPersons = (
   relViews: RelationView[],
@@ -116,8 +117,12 @@ export const mergeRelationViewsWithPostedPersons = (
 
 /**
  * ❸ の「キャッシュ」表示・初回選択時の DB 読み出しの対象。
- * `executed_as_master` / `executed_as_master_at` に相当する API の `has_relations` が真のときのみ。
- * 関連者としてだけ登録された人物（例: executed_as_master = false）は対象外。
+ * 主体としての `relation` が存在し、かつ**主体者として実行済み**（`is_executed_master`）のときのみ。
+ * `has_relations` のみ真（slave 経由で master 行が付いたが未実行フラグ等）では Wikipedia 抽出へ進む。
  */
 export const isPrincipalRelationsCacheSource = (p: ApiPerson | undefined): boolean =>
-  Boolean(p?.has_relations);
+  Boolean(p?.has_relations && p?.is_executed_master);
+
+/** 相関図の中心候補・❷ の突合など「主体者として実行済み」の導線用 */
+export const isExecutedPrincipalForDiagram = (p: ApiPerson | undefined): boolean =>
+  Boolean(p?.is_executed_master);
