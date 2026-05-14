@@ -1,110 +1,64 @@
 import { DiagramTabPanel } from "../ui/DiagramTabPanel";
+import type { PeopleRelationAppModel } from "../peopleRelationAppModel";
 import { AppHeader } from "./AppHeader";
 import { MainTabBar } from "./MainTabBar";
 import { PrincipalSearchCard } from "./PrincipalSearchCard";
 import { PrincipalRelationsCard } from "./PrincipalRelationsCard";
 import { BusyOverlay } from "./BusyOverlay";
-import type { PeopleRelationAppViewModel } from "../hooks/usePeopleRelationApp";
 
-export const PeopleRelationAppView = ({
-  mainTab,
-  setMainTab,
-  diagramQueueCenterPerson,
-  onDiagramQueueCenterPersonApplied,
-  query,
-  setQuery,
-  queryInputRef,
-  busy,
-  onSearch,
-  error,
-  progress,
-  isSearchProgress,
-  progressPct,
-  wikiResults,
-  wikiDisplayNameCounts,
-  hasSearched,
-  wikiEmptyMessage,
-  onSelect,
-  detailRef,
-  selected,
-  masterLabel,
-  source,
-  masterExecutedAtLabel,
-  excludeZeroReverse,
-  setExcludeZeroReverse,
-  displayRelations,
-  relations,
-  resetDetail,
-  loadFromServer,
-  extractFromWikipedia,
-  onAddPrincipalToDiagram,
-  busyOverlayCaption,
-}: PeopleRelationAppViewModel) => (
-  <>
-    <div
-      className={`container${mainTab === "diagram" ? " containerDiagramLayout" : ""}`}
-    >
-      <AppHeader />
-      <MainTabBar mainTab={mainTab} onTabChange={setMainTab} />
+type PeopleRelationAppViewProps = {
+  model: PeopleRelationAppModel;
+};
 
+export const PeopleRelationAppView = ({ model }: PeopleRelationAppViewProps) => {
+  const { nav, appBusy, listSearch, principalDetail, error } = model;
+  return (
+    <>
       <div
-        id="main-panel-list"
-        role="tabpanel"
-        aria-labelledby="main-tab-list"
-        className="mainTabPanel"
-        hidden={mainTab !== "list"}
+        className={`container${nav.mainTab === "diagram" ? " containerDiagramLayout" : ""}`}
       >
-        <div className="grid">
-          <PrincipalSearchCard
-            query={query}
-            setQuery={setQuery}
-            queryInputRef={queryInputRef}
-            busy={busy}
-            onSearch={onSearch}
-            error={error}
-            progress={progress}
-            isSearchProgress={isSearchProgress}
-            progressPct={progressPct}
-            wikiResults={wikiResults}
-            wikiDisplayNameCounts={wikiDisplayNameCounts}
-            hasSearched={hasSearched}
-            wikiEmptyMessage={wikiEmptyMessage}
-            onSelect={onSelect}
-          />
-          <PrincipalRelationsCard
-            detailRef={detailRef}
-            selected={selected}
-            masterLabel={masterLabel}
-            source={source}
-            masterExecutedAtLabel={masterExecutedAtLabel}
-            excludeZeroReverse={excludeZeroReverse}
-            setExcludeZeroReverse={setExcludeZeroReverse}
-            displayRelations={displayRelations}
-            relations={relations}
-            busy={busy}
-            resetDetail={resetDetail}
-            loadFromServer={loadFromServer}
-            extractFromWikipedia={extractFromWikipedia}
-            onSearch={onSearch}
-            setQuery={setQuery}
-            onAddPrincipalToDiagram={onAddPrincipalToDiagram}
+        <AppHeader />
+        <MainTabBar mainTab={nav.mainTab} onTabChange={nav.setMainTab} />
+
+        <div
+          id="main-panel-list"
+          role="tabpanel"
+          aria-labelledby="main-tab-list"
+          className="mainTabPanel"
+          hidden={nav.mainTab !== "list"}
+        >
+          <div className="grid">
+            <PrincipalSearchCard
+              error={error}
+              appBusy={appBusy}
+              listSearch={listSearch}
+            />
+            <PrincipalRelationsCard
+              busy={appBusy.busy}
+              searchActions={{
+                setQuery: listSearch.setQuery,
+                onSearch: listSearch.onSearch,
+              }}
+              principalDetail={principalDetail}
+              onAddPrincipalToDiagram={nav.onAddPrincipalToDiagram}
+            />
+          </div>
+        </div>
+        <div
+          id="main-panel-diagram"
+          role="tabpanel"
+          aria-labelledby="main-tab-diagram"
+          className="mainTabPanel"
+          hidden={nav.mainTab !== "diagram"}
+        >
+          <DiagramTabPanel
+            queueCenterPerson={nav.diagramQueueCenterPerson}
+            onQueueCenterPersonApplied={nav.onDiagramQueueCenterPersonApplied}
           />
         </div>
       </div>
-      <div
-        id="main-panel-diagram"
-        role="tabpanel"
-        aria-labelledby="main-tab-diagram"
-        className="mainTabPanel"
-        hidden={mainTab !== "diagram"}
-      >
-        <DiagramTabPanel
-          queueCenterPerson={diagramQueueCenterPerson}
-          onQueueCenterPersonApplied={onDiagramQueueCenterPersonApplied}
-        />
-      </div>
-    </div>
 
-    {busy ? <BusyOverlay caption={busyOverlayCaption} /> : null}
-  </>
-);
+      {appBusy.busy ? <BusyOverlay caption={appBusy.busyOverlayCaption} /> : null}
+    </>
+  );
+};
