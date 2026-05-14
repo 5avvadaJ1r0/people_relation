@@ -872,10 +872,10 @@ input[type="text"]:focus-visible {
 
 .principalRelatedRowActions {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 8px;
 }
 
 /* 関連者テーブル「相関図に追加」「関連者を探す」: 2カラムレイアウト（981px〜）のときのみ表示（.grid と同じ閾値） */

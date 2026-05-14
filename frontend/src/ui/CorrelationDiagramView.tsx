@@ -2,6 +2,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   memo,
   useRef,
@@ -215,12 +216,22 @@ const FitViewOnReady = ({
   fitTrigger?: string;
 }) => {
   const { fitView } = useReactFlow();
+  const nodesReady = useNodesInitialized();
+
   useEffect(() => {
-    const t = requestAnimationFrame(() => {
-      fitView({ padding: 0.2, duration: 400 });
+    if (!nodesReady) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        fitView({ padding: 0.2, duration: 400 });
+      });
     });
-    return () => cancelAnimationFrame(t);
-  }, [fitView, fitTrigger]);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [fitView, fitTrigger, nodesReady]);
   return null;
 };
 
@@ -262,7 +273,8 @@ export const CorrelationDiagramView = forwardRef<
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState<Node>(built.nodes);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>(built.edges);
 
-  useEffect(() => {
+  /** 親の passive effect より後に確実にノードを差し替え、子の fitView が古い座標を見ないようにする */
+  useLayoutEffect(() => {
     const next = buildDiagramNodesAndEdges(members, rows, layoutOpt);
     setRfNodes(next.nodes);
     setRfEdges(next.edges);
@@ -310,10 +322,12 @@ export const CorrelationDiagramView = forwardRef<
     }
   }, [empty, onDiagramShareReadyChange]);
 
-  const fitTrigger =
-    members.length === 2
-      ? `${twoCoreLayout}:${members.join("\u0001")}:${rows.length}`
-      : `${members.length}:${rows.length}`;
+  const fitTrigger = useMemo(() => {
+    const rowSig = rows
+      .map((r) => `${r.a}\u001f${r.b}\u001f${r.points}`)
+      .join("\u001e");
+    return `${twoCoreLayout}\u0000${members.join("\u0001")}\u0000${rowSig}`;
+  }, [members, rows, twoCoreLayout]);
 
   return (
     <div className="diagramFlowWrap">
