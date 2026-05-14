@@ -14,6 +14,9 @@ import {
 /** 相関図の中心人物として選べる最大人数（API `CoreNetworkIn` と一致） */
 const MAX_DIAGRAM_CENTER = 10;
 
+/** 「相関図を作成する」および中心人物クリア時の関連値しきい値（`SUM(point) > total_point_gt` の gt） */
+const DEFAULT_DIAGRAM_TOTAL_POINT_GT = 1;
+
 const SUGGEST_DEBOUNCE_MS = 320;
 const MIN_SUGGEST_QUERY_LEN = 1;
 
@@ -92,7 +95,7 @@ export const DiagramTabPanel = ({
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<string[]>([]);
   const [rows, setRows] = useState<DiagramRow[]>([]);
-  const [totalPointGt, setTotalPointGt] = useState(1);
+  const [totalPointGt, setTotalPointGt] = useState(DEFAULT_DIAGRAM_TOTAL_POINT_GT);
   /** 中心 2 名の相関図でのみ利用（縦＝上・下 / 横＝左・右） */
   const [twoCoreLayout, setTwoCoreLayout] = useState<TwoCoreLayout>("vertical");
   const queryInputRef = useRef<HTMLInputElement | null>(null);
@@ -225,7 +228,7 @@ export const DiagramTabPanel = ({
   };
 
   const buildDiagram = async () => {
-    await loadDiagramWithGt(totalPointGt);
+    await loadDiagramWithGt(DEFAULT_DIAGRAM_TOTAL_POINT_GT);
   };
 
   const thresholdUiActive = members.length > 0 && canBuild;
@@ -495,7 +498,7 @@ export const DiagramTabPanel = ({
                     setCenter([]);
                     setMembers([]);
                     setRows([]);
-                    setTotalPointGt(1);
+                    setTotalPointGt(DEFAULT_DIAGRAM_TOTAL_POINT_GT);
                     setTwoCoreLayout("vertical");
                     setError(null);
                   }}
