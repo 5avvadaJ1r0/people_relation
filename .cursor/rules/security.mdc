@@ -1,0 +1,16 @@
+---
+description: Security rules
+globs:
+alwaysApply: true
+---
+
+# Security Rules
+
+- API key をハードコードしない
+- 環境変数を利用する
+- SQL injection を防止する
+- XSS を考慮する
+- user input を信用しない
+- 権限チェックを明示する
+- ログへ機密情報を書かない
+- rate limit を検討する

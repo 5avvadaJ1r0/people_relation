@@ -1,0 +1,26 @@
+---
+description: Project architecture rules
+globs:
+alwaysApply: true
+---
+
+# Architecture Rules
+
+- 責務分離を徹底する
+- UI / business logic / infrastructure を分離する
+- 巨大ファイル化を避ける
+- 関数は単一責務を維持する
+- 共通処理は utility 化する
+- 循環参照は禁止
+- 副作用を持つ処理は明示する
+- データ取得処理を UI コンポーネントに直接書かない
+- 型安全性を優先する
+- TODO/HACK は理由を記載する
+
+# AI Agent Rules
+
+- 無関係ファイルを変更しない
+- 推測で実装しない
+- 大規模変更前は方針を説明する
+- 既存設計を尊重する
+- 既存命名規則を維持する

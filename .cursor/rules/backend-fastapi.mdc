@@ -1,0 +1,20 @@
+---
+description: FastAPI backend rules
+globs:
+  - backend/**/*.py
+alwaysApply: false
+---
+
+# FastAPI Rules
+
+- router/service/repository を分離する
+- SQL を router に直接書かない
+- Pydantic model を明示的に定義する
+- DB access は repository 層に閉じ込める
+- dependency injection を利用する
+- 例外は HTTPException に統一する
+- logging を適切に行う
+- async/await を統一する
+- response model を必ず定義する
+- CRUD 層にビジネスロジックを書かない
+- parser 処理は service 層へ集約する

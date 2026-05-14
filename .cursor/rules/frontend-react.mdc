@@ -1,0 +1,19 @@
+---
+description: React frontend rules
+globs:
+  - frontend/**/*.tsx
+  - frontend/**/*.ts
+alwaysApply: false
+---
+
+# React Rules
+
+- hooks の依存配列を適切に管理する
+- useEffect を乱用しない
+- ビジネスロジックは custom hooks に分離する
+- event handler を JSX 内へ長く書かない
+- component は責務分離する
+- API 呼び出しは service 層経由にする
+- any 型は禁止
+- useMemo/useCallback は必要時のみ利用する
+- props が多すぎる場合は object 化を検討する

@@ -1,0 +1,20 @@
+---
+description: SQL and database rules
+globs:
+  - backend/**/*.sql
+  - backend/**/*.py
+alwaysApply: false
+---
+
+# SQL Rules
+
+- N+1 を避ける
+- SELECT * を禁止する
+- JOIN 条件を明示する
+- index 利用を意識する
+- LIMIT が必要か確認する
+- 集約前後の filtering を意識する
+- explain analyze を考慮する
+- 巨大クエリは CTE で分割する
+- SQL injection を防止する
+- nullable を意識して実装する
