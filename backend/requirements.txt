@@ -6,7 +6,7 @@ psycopg[binary]==3.2.9
 pydantic==2.11.5
 pydantic-settings==2.9.1
 alembic==1.18.4
-redis==5.2.1
+redis==7.4.0
 httpx==0.28.1
 mwparserfromhell==0.7.2
 beautifulsoup4==4.12.3
