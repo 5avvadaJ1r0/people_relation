@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app import crud
+from app.model import Person
 from app.schemas import RelationIn, RelationOut
 from app.services.schema_maps import relation_out, stamp_master_executed_at_on_relations
 from app.services.wiki.resolver.resolve import (
@@ -40,7 +41,6 @@ def save_relations_batch(
             executed_norm = crud.normalize_url(executed_master_url)
 
     try:
-        out: list[RelationOut] = []
         if executed_norm:
             mp = crud.get_person_by_url(db, url=executed_norm)
             if mp is not None:
@@ -54,6 +54,7 @@ def save_relations_batch(
                     reverse_master_ids=prev_slave_ids,
                 )
 
+        triples: list[tuple[Person, Person, int]] = []
         for item in payload:
             mn, mu, mtit = normalized_person_in(item.master, resolved_titles)
             sn, su, stit = normalized_person_in(item.slave, resolved_titles)
@@ -62,7 +63,17 @@ def save_relations_batch(
             rel = crud.upsert_relation(
                 db, master_id=master.id, slave_id=slave.id, point=item.point
             )
-            out.append(relation_out(master, slave, point=rel.point))
+            triples.append((master, slave, rel.point))
+
+        ids: list[int] = []
+        for m, s, _ in triples:
+            ids.append(m.id)
+            ids.append(s.id)
+        forward = crud.person_ids_with_forward_relation(db, person_ids=ids)
+        out: list[RelationOut] = [
+            relation_out(m, s, point=pt, forward_edge_person_ids=forward)
+            for m, s, pt in triples
+        ]
 
         marked = None
         if executed_norm:

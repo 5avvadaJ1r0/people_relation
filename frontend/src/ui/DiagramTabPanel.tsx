@@ -71,11 +71,14 @@ export type DiagramTabPanelProps = {
   /** 関連者リスト側から中心人物を追加するときに渡す（`requestId` は同一人物の再追加でも発火させるための nonce） */
   queueCenterPerson?: { person: ApiPerson; requestId: number } | null;
   onQueueCenterPersonApplied?: () => void;
+  /** サジェスト空時の案内から「関連者リストアップ」タブへ切替え、主体者入力に相関図タブの入力文字列を渡す */
+  onOpenListTabWithPrincipalQuery?: (query: string) => void;
 };
 
 export const DiagramTabPanel = ({
   queueCenterPerson = null,
   onQueueCenterPersonApplied,
+  onOpenListTabWithPrincipalQuery,
 }: DiagramTabPanelProps) => {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -411,9 +414,26 @@ export const DiagramTabPanel = ({
                           ? `中心人物は最大 ${MAX_DIAGRAM_CENTER} 名までです。`
                           : matches.length > 0
                             ? "この検索結果はすべてすでに中心人物に追加されています。"
-                            : suggestFetched
-                              ? "該当する人物がいません。別の文字列を試すか、関連者リストアップが済んでいるか確認してください。"
-                              : null}
+                            : suggestFetched ? (
+                              <span className="diagramSuggestEmptyText">
+                                該当する人物がいません。別の文字列を試すか、
+                                {onOpenListTabWithPrincipalQuery ? (
+                                  <button
+                                    type="button"
+                                    className="diagramSuggestEmptyLink"
+                                    onClick={() =>
+                                      onOpenListTabWithPrincipalQuery(query)
+                                    }
+                                    aria-label="関連者リストアップのタブへ移動し、入力中の氏名を主体者入力欄に反映"
+                                  >
+                                    関連者リストアップ
+                                  </button>
+                                ) : (
+                                  "関連者リストアップ"
+                                )}
+                                が済んでいるか確認してください。
+                              </span>
+                            ) : null}
                       </div>
                     )}
                   </div>

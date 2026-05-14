@@ -1,12 +1,9 @@
-# fork 由来の PR では通常の pull_request では secrets が渡らない。
-# pull_request_target はベース側のコンテキストで secrets を使えるが、PR 先のコードを
-# checkout・実行しない運用に限る（本ワークフローは gh pr diff + リポジトリ同梱のスクリプトのみ）。
+# fork 由来の PR では pull_request イベントではリポジトリ secrets が渡らないため、
+# 同一リポジトリ内のブランチ PR のみを対象とする。
 name: Gemini PR review
 
 on:
   pull_request:
-    types: [opened, reopened]
-  pull_request_target:
     types: [opened, reopened]
 
 permissions:
@@ -22,10 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event.pull_request.draft == false &&
-      (
-        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false) ||
-        (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.fork == true)
-      )
+      github.event.pull_request.head.repo.fork == false
 
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -5,6 +5,7 @@ from app.crud.person import (
     get_person,
     get_person_by_url,
     get_wiki_human_cache,
+    list_persons_executed_masters_by_urls,
     list_wiki_human_cache_by_urls,
     mark_executed_as_master_by_url,
     normalize_url,
@@ -20,6 +21,7 @@ from app.crud.relation import (
     get_relation_aggregates_for_master,
     get_relations_for_master,
     list_slave_person_ids_for_master,
+    person_ids_with_forward_relation,
     upsert_relation,
 )
 
@@ -31,7 +33,9 @@ __all__ = [
     "get_person_by_url",
     "get_relation_aggregates_for_master",
     "get_relations_for_master",
+    "list_persons_executed_masters_by_urls",
     "list_slave_person_ids_for_master",
+    "person_ids_with_forward_relation",
     "get_wiki_human_cache",
     "list_wiki_human_cache_by_urls",
     "mark_executed_as_master_by_url",

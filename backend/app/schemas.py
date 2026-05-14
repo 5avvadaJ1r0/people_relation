@@ -32,6 +32,8 @@ class PersonOut(BaseModel):
     name: str
     title: str
     url: str
+    has_relations: bool
+    is_executed_master: bool
     executed_as_master_at: datetime | None = None
 
 
@@ -55,7 +57,28 @@ class PersonSearchOut(BaseModel):
     title: str
     url: str
     has_relations: bool
+    is_executed_master: bool
     executed_as_master_at: datetime | None = None
+
+
+class WikiMasterResolvePageIn(BaseModel):
+    """Wikipedia 検索結果の 1 行（記事タイトルから ja.wikipedia の canonical URL を組み立てる）。"""
+
+    title: str = Field(min_length=1, max_length=500)
+    pageid: int = Field(description="MediaWiki の pageid（レスポンス突合用）")
+
+
+class WikiMasterResolveIn(BaseModel):
+    items: list[WikiMasterResolvePageIn] = Field(min_length=1, max_length=50)
+
+
+class WikiMasterResolvePageOut(BaseModel):
+    pageid: int
+    person: PersonSearchOut | None = None
+
+
+class WikiMasterResolveOut(BaseModel):
+    items: list[WikiMasterResolvePageOut]
 
 
 class CoreNetworkIn(BaseModel):
