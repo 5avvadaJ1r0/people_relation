@@ -421,6 +421,7 @@ export const DiagramTabPanel = ({
                                   <button
                                     type="button"
                                     className="diagramSuggestEmptyLink"
+                                    onMouseDown={(ev) => ev.preventDefault()}
                                     onClick={() =>
                                       onOpenListTabWithPrincipalQuery(query)
                                     }
