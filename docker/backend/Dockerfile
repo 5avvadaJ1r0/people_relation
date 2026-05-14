@@ -1,4 +1,6 @@
-FROM python:3.14-slim
+# Python 3.14 on slim often falls back to building pydantic-core (Rust) and
+# mwparserfromhell (C) from source without gcc. Match CI (3.12) for manylinux wheels.
+FROM python:3.12-slim
 
 WORKDIR /app
 
