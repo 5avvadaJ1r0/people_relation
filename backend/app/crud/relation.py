@@ -9,6 +9,17 @@ from sqlalchemy.orm import Session, aliased
 from app.model import Relation
 
 
+def list_slave_person_ids_for_master(db: Session, *, master_id: int) -> list[int]:
+    """指定 master からの forward エッジ先（slave の person id）を列挙する。"""
+    return list(
+        db.scalars(
+            select(Relation.slave_person_id).where(
+                Relation.master_person_id == master_id
+            )
+        ).all()
+    )
+
+
 def delete_relations_where_master(db: Session, *, master_id: int) -> int:
     """主体を master とする forward 行をすべて削除する。"""
     res = cast(

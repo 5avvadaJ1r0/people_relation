@@ -25,8 +25,9 @@ _RESOLVE_HTTP_CLIENT: httpx.Client | None = None
 def _get_resolve_client() -> httpx.Client:
     global _RESOLVE_HTTP_CLIENT
     if _RESOLVE_HTTP_CLIENT is None:
+        # httpx 0.28+: 部分指定不可。connect/read に加え write/pool を明示する。
         _RESOLVE_HTTP_CLIENT = httpx.Client(
-            timeout=httpx.Timeout(connect=5.0, read=10.0),
+            timeout=httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0),
             headers={"User-Agent": settings.wikipedia_user_agent},
         )
     return _RESOLVE_HTTP_CLIENT

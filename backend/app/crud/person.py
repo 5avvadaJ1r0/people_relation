@@ -112,6 +112,12 @@ def get_person(db: Session, person_id: int) -> Person | None:
     return db.scalar(select(Person).where(Person.id == person_id))
 
 
+def get_person_by_url(db: Session, *, url: str) -> Person | None:
+    """正規化済み URL 相当の `Person.url` で 1 件取得する。"""
+    url_n = normalize_url(url)
+    return db.scalar(select(Person).where(Person.url == url_n))
+
+
 def mark_executed_as_master_by_url(db: Session, *, url: str) -> Person | None:
     url_n = normalize_url(url)
     person = db.scalar(select(Person).where(Person.url == url_n))
