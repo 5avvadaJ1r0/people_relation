@@ -1,5 +1,5 @@
-# Python 3.14 on slim often falls back to building pydantic-core (Rust) and
-# mwparserfromhell (C) from source without gcc. Match CI (3.12) for manylinux wheels.
+# 3.14 では pydantic-core 等の manylinux ホイールが揃わず、slim イメージで gcc/Rust ビルドが必要になる。
+# 本リポジトリの backend は 3.12 想定（.venv / CI と整合）。
 FROM python:3.12-slim
 
 WORKDIR /app
