@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from app.crud.person import wiki_ja_article_url
+
 
 def test_health(client: TestClient) -> None:
     r = client.get("/api/v1/health")
@@ -56,6 +58,42 @@ def test_person_search_executed_masters_empty(client: TestClient) -> None:
 def test_person_search_executed_masters_validation(client: TestClient) -> None:
     r = client.get("/api/v1/person/search_executed_masters", params={"name": ""})
     assert r.status_code == 422
+
+
+def test_resolve_wiki_masters_returns_master_by_article_url(client: TestClient) -> None:
+    """記事タイトルから組み立てた URL と一致する主体者のみ resolve が返す。"""
+    title = "ResolveWikiMasterApiX"
+    url_master = wiki_ja_article_url(title)
+    payload = [
+        {
+            "master": {"name": "R主", "url": url_master, "title": title},
+            "slave": {
+                "name": "R従",
+                "url": "https://example.com/r-slave",
+                "title": "R従T",
+            },
+            "point": 1,
+        },
+    ]
+    r = client.post(
+        "/api/v1/relation",
+        json=payload,
+        params={"executed_master_url": url_master},
+    )
+    assert r.status_code == 200
+
+    r2 = client.post(
+        "/api/v1/person/resolve_wiki_masters",
+        json={"items": [{"title": title, "pageid": 999001}]},
+    )
+    assert r2.status_code == 200
+    body = r2.json()
+    assert len(body["items"]) == 1
+    row = body["items"][0]
+    assert row["pageid"] == 999001
+    assert row["person"] is not None
+    assert row["person"]["url"] == url_master
+    assert row["person"]["has_relations"] is True
 
 
 def test_diagram_core_network_validation(client: TestClient) -> None:
@@ -253,6 +291,8 @@ def test_post_relation_and_person_endpoints(client: TestClient) -> None:
     assert len(rels) == 1
     assert rels[0]["point"] == 3
     assert rels[0]["slave"]["name"] == "乙"
+    assert rels[0]["master"]["has_relations"] is True
+    assert rels[0]["slave"]["has_relations"] is False
 
     r_agg = client.get(f"/api/v1/person/{master_id}/relations_aggregate")
     assert r_agg.status_code == 200
@@ -261,6 +301,7 @@ def test_post_relation_and_person_endpoints(client: TestClient) -> None:
     assert agg[0]["total_point"] == 5
     assert agg[0]["forward_point"] == 3
     assert agg[0]["reverse_point"] == 2
+    assert agg[0]["slave"]["has_relations"] is False
 
 
 def test_post_relation_replaces_edges_when_executed_master_url(

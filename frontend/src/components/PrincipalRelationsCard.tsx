@@ -1,5 +1,6 @@
 import { isPrincipalRelationsCacheSource } from "../lib/wikiPersonMatch";
 import { WIKI_MAX_RELATED_DISPLAY } from "../wikiDisplayConstants";
+import type { ApiPerson } from "../lib/types";
 import type {
   PeopleRelationPrincipalDetailModel,
   PeopleRelationSearchActionsModel,
@@ -9,7 +10,7 @@ type PrincipalRelationsCardProps = {
   busy: boolean;
   searchActions: PeopleRelationSearchActionsModel;
   principalDetail: PeopleRelationPrincipalDetailModel;
-  onAddPrincipalToDiagram: () => void;
+  onAddRelatedPersonToDiagram: (person: ApiPerson) => void;
 };
 
 const runAsMasterFromRow =
@@ -29,7 +30,7 @@ export const PrincipalRelationsCard = ({
   busy,
   searchActions,
   principalDetail,
-  onAddPrincipalToDiagram,
+  onAddRelatedPersonToDiagram,
 }: PrincipalRelationsCardProps) => {
   const { setQuery, onSearch } = searchActions;
   const runAsMaster = runAsMasterFromRow(busy, setQuery, onSearch);
@@ -93,7 +94,7 @@ export const PrincipalRelationsCard = ({
         </div>
       ) : (
         <div className="subtitle" style={{ marginBottom: 10 }}>
-          主体者検索結果から人物を選択してください。
+          主体者検索結果の Wikipedia 行で「関連者を探す」を選んでください。
         </div>
       )}
 
@@ -109,7 +110,11 @@ export const PrincipalRelationsCard = ({
             </tr>
           </thead>
           <tbody>
-            {displayRelations.map((r) => (
+            {displayRelations.map((r) => {
+              const sp = r.slavePerson;
+              const canAddSlaveToDiagram =
+                sp != null && isPrincipalRelationsCacheSource(sp);
+              return (
               <tr key={`${r.slave.url}-${r.totalPoint}-${r.forwardPoint}`}>
                 <td>
                   <a href={r.slave.url} target="_blank" rel="noreferrer">
@@ -117,14 +122,26 @@ export const PrincipalRelationsCard = ({
                   </a>
                 </td>
                 <td style={{ textAlign: "right" }}>
-                  <button
-                    type="button"
-                    className="principalRunAsMasterBtn"
-                    disabled={busy}
-                    onClick={() => runAsMaster(r.slave.name, r.slave.title)}
-                  >
-                    主体者として実行
-                  </button>
+                  <span className="principalRelatedRowActions">
+                    {canAddSlaveToDiagram ? (
+                      <button
+                        type="button"
+                        className="principalDiagramAddLink"
+                        disabled={busy}
+                        onClick={() => onAddRelatedPersonToDiagram(sp)}
+                      >
+                        相関図に追加
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="principalRunAsMasterBtn"
+                      disabled={busy}
+                      onClick={() => runAsMaster(r.slave.name, r.slave.title)}
+                    >
+                      関連者を探す
+                    </button>
+                  </span>
                 </td>
                 <td style={{ textAlign: "right" }}>{r.forwardPoint}</td>
                 <td style={{ textAlign: "right" }}>{r.reversePoint}</td>
@@ -132,7 +149,8 @@ export const PrincipalRelationsCard = ({
                   <span className="pill">{r.totalPoint}</span>
                 </td>
               </tr>
-            ))}
+            );
+            })}
           </tbody>
         </table>
       ) : relations.length > 0 ? (
@@ -164,21 +182,6 @@ export const PrincipalRelationsCard = ({
             onClick={() => void extractFromWikipedia(selected.wiki.title)}
           >
             再実行
-          </button>
-          <button
-            type="button"
-            className="success"
-            disabled={
-              busy || !isPrincipalRelationsCacheSource(selected.serverPerson)
-            }
-            title={
-              !isPrincipalRelationsCacheSource(selected.serverPerson)
-                ? "主体者として実行済みの人物のみ相関図の中心に追加できます"
-                : undefined
-            }
-            onClick={onAddPrincipalToDiagram}
-          >
-            主体者を相関図に追加
           </button>
         </div>
       )}

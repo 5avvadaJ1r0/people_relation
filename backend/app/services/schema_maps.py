@@ -5,11 +5,15 @@ from app.schemas import PersonOut, RelationAggregateOut, RelationOut, PersonSear
 
 
 def person_to_out(person: Person) -> PersonOut:
+    executed = person.executed_as_master_at is not None or bool(
+        person.executed_as_master
+    )
     return PersonOut(
         id=person.id,
         name=person.name,
         title=person.title,
         url=person.url,
+        has_relations=executed,
         executed_as_master_at=person.executed_as_master_at,
     )
 

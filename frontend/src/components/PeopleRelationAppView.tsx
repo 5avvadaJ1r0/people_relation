@@ -40,7 +40,7 @@ export const PeopleRelationAppView = ({ model }: PeopleRelationAppViewProps) => 
                 onSearch: listSearch.onSearch,
               }}
               principalDetail={principalDetail}
-              onAddPrincipalToDiagram={nav.onAddPrincipalToDiagram}
+              onAddRelatedPersonToDiagram={nav.onAddRelatedPersonToDiagram}
             />
           </div>
         </div>
@@ -54,6 +54,7 @@ export const PeopleRelationAppView = ({ model }: PeopleRelationAppViewProps) => 
           <DiagramTabPanel
             queueCenterPerson={nav.diagramQueueCenterPerson}
             onQueueCenterPersonApplied={nav.onDiagramQueueCenterPersonApplied}
+            onOpenListTabWithPrincipalQuery={nav.onOpenListTabWithPrincipalQuery}
           />
         </div>
       </div>

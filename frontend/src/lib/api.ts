@@ -38,6 +38,21 @@ export const apiSearchPersonExecutedMasters = async (
   return await parseJsonOrThrow<ApiPerson[]>(res, "apiSearchPersonExecutedMasters");
 };
 
+export const apiResolveWikiMasters = async (
+  items: { title: string; pageid: number }[],
+  init?: { signal?: AbortSignal }
+): Promise<{ items: { pageid: number; person: ApiPerson | null }[] }> => {
+  const url = `${API_BASE}/v1/person/resolve_wiki_masters`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+    signal: init?.signal,
+  });
+  if (!res.ok) throw new Error(`apiResolveWikiMasters failed: ${res.status}`);
+  return await parseJsonOrThrow(res, "apiResolveWikiMasters");
+};
+
 export const apiPostDiagramCoreNetwork = async (
   body: { center_titles: string[]; total_point_gt?: number },
   init?: { signal?: AbortSignal }

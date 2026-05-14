@@ -8,7 +8,14 @@ from app.services.schema_maps import (
     relation_aggregate_out,
     relation_out_from_row,
 )
-from app.schemas import PersonSearchOut, RelationAggregateOut, RelationOut
+from app.schemas import (
+    PersonSearchOut,
+    RelationAggregateOut,
+    RelationOut,
+    WikiMasterResolveIn,
+    WikiMasterResolveOut,
+    WikiMasterResolvePageOut,
+)
 
 
 def search_persons_executed_as_master_only(
@@ -17,6 +24,25 @@ def search_persons_executed_as_master_only(
     """主体者として実行済み（executed_as_master）の人物のみを名前で検索する。"""
     persons = crud.search_persons_executed_as_master(db, name=name, limit=20)
     return [person_search_out(p) for p in persons]
+
+
+def resolve_wiki_master_rows(
+    db: Session, body: WikiMasterResolveIn
+) -> WikiMasterResolveOut:
+    """各 Wikipedia 記事 URL に紐づく人物が主体者として実行済みなら `PersonSearchOut` を返す。"""
+    pages = body.items
+    urls = [crud.wiki_ja_article_url(p.title) for p in pages]
+    by_url = crud.list_persons_executed_masters_by_urls(db, urls=urls)
+    items: list[WikiMasterResolvePageOut] = []
+    for page, u in zip(pages, urls):
+        row = by_url.get(crud.normalize_url(u))
+        items.append(
+            WikiMasterResolvePageOut(
+                pageid=page.pageid,
+                person=person_search_out(row) if row is not None else None,
+            )
+        )
+    return WikiMasterResolveOut(items=items)
 
 
 def search_persons(db: Session, name: str) -> list[PersonSearchOut]:

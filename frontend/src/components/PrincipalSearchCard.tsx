@@ -26,6 +26,8 @@ export const PrincipalSearchCard = ({
     hasSearched,
     wikiEmptyMessage,
     onSelect,
+    getDiagramPersonIfReadyForWikiRow,
+    onAddWikiRowPersonToDiagram,
   } = listSearch;
   const { busy, progress, isSearchProgress, progressPct } = appBusy;
 
@@ -43,7 +45,7 @@ export const PrincipalSearchCard = ({
   };
 
   return (
-    <div className="card">
+    <div className="card principalSearchCard">
       <h2>❶ 主体者入力</h2>
       <div className="row">
         <div className="textInputWrap">
@@ -113,14 +115,30 @@ export const PrincipalSearchCard = ({
           const displayName = displayPersonNameFromWikiTitle(r.title);
           const isAmbiguous = (wikiDisplayNameCounts.get(displayName) ?? 0) >= 2;
           const label = isAmbiguous ? r.title : displayName;
+          const diagramPerson = getDiagramPersonIfReadyForWikiRow(r);
           return (
             <div key={r.pageid} className="item">
               <div className="itemTitle">
                 <div style={{ fontWeight: 700 }}>{label}</div>
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button disabled={busy} onClick={() => void onSelect(r)}>
-                  選択
+              <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
+                {diagramPerson ? (
+                  <button
+                    type="button"
+                    className="principalDiagramAddLink"
+                    disabled={busy}
+                    onClick={() => onAddWikiRowPersonToDiagram(diagramPerson)}
+                  >
+                    相関図に追加
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="principalWikiSelectLink"
+                  disabled={busy}
+                  onClick={() => void onSelect(r)}
+                >
+                  関連者を探す
                 </button>
               </div>
             </div>

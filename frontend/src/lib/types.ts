@@ -16,14 +16,6 @@ export type RelationIn = {
   point: number;
 };
 
-export type RelationView = {
-  slave: PersonRef;
-  forwardPoint: number;
-  reversePoint: number;
-  totalPoint: number;
-  hasWikiPage: boolean;
-};
-
 export type ApiPerson = {
   id: number;
   name: string;
@@ -33,12 +25,23 @@ export type ApiPerson = {
   executed_as_master_at?: string | null;
 };
 
+export type RelationView = {
+  slave: PersonRef;
+  /** サーバーまたは POST 直後の関連者行に限り。`has_relations` が真なら相関図の中心に追加可能 */
+  slavePerson?: ApiPerson;
+  forwardPoint: number;
+  reversePoint: number;
+  totalPoint: number;
+  hasWikiPage: boolean;
+};
+
 export type ApiRelation = {
   master: {
     id: number;
     name: string;
     title: string;
     url: string;
+    has_relations: boolean;
     executed_as_master_at?: string | null;
   };
   slave: {
@@ -46,6 +49,7 @@ export type ApiRelation = {
     name: string;
     title: string;
     url: string;
+    has_relations: boolean;
     executed_as_master_at?: string | null;
   };
   point: number;
@@ -68,6 +72,7 @@ export type ApiRelationAggregate = {
     name: string;
     title: string;
     url: string;
+    has_relations: boolean;
     executed_as_master_at?: string | null;
   };
   slave: {
@@ -75,6 +80,7 @@ export type ApiRelationAggregate = {
     name: string;
     title: string;
     url: string;
+    has_relations: boolean;
     executed_as_master_at?: string | null;
   };
   forward_point: number;

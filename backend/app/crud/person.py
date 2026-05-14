@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from urllib.parse import quote
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.model import Person, WikiHumanCache
@@ -75,6 +75,26 @@ def upsert_person(db: Session, *, name: str, url: str, title: str | None) -> Per
     if title:
         person.title = title
     return person
+
+
+def list_persons_executed_masters_by_urls(
+    db: Session, *, urls: list[str]
+) -> dict[str, Person]:
+    """正規化 URL をキーに、`executed_as_master` 相当の人物のみ返す（❷ 相関図リンク用の一括突合）。"""
+    if not urls:
+        return {}
+    norms = [normalize_url(u) for u in urls]
+    uniq: list[str] = list(dict.fromkeys(norms))
+    rows = db.scalars(
+        select(Person).where(
+            Person.url.in_(uniq),
+            or_(
+                Person.executed_as_master.is_(True),
+                Person.executed_as_master_at.isnot(None),
+            ),
+        )
+    ).all()
+    return {normalize_url(p.url): p for p in rows}
 
 
 def search_persons_executed_as_master(

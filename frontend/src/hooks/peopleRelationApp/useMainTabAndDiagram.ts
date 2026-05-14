@@ -1,11 +1,9 @@
 import { useCallback, useState } from "react";
 import type { ApiPerson } from "../../lib/types";
-import type { MainAppTab, SelectedPrincipal } from "../../appScreenTypes";
+import type { MainAppTab } from "../../appScreenTypes";
 import { isPrincipalRelationsCacheSource } from "../../lib/wikiPersonMatch";
 
-export const useMainTabAndDiagram = (
-  selected: SelectedPrincipal | null,
-) => {
+export const useMainTabAndDiagram = () => {
   const [mainTab, setMainTab] = useState<MainAppTab>("list");
   const [diagramQueueCenterPerson, setDiagramQueueCenterPerson] = useState<{
     person: ApiPerson;
@@ -15,21 +13,23 @@ export const useMainTabAndDiagram = (
     setDiagramQueueCenterPerson(null);
   }, []);
 
-  const onAddPrincipalToDiagram = useCallback(() => {
-    const p = selected?.serverPerson;
-    if (!p || !isPrincipalRelationsCacheSource(p)) return;
-    setDiagramQueueCenterPerson({
-      person: p,
-      requestId: Date.now(),
-    });
-    setMainTab("diagram");
-  }, [selected]);
+  const queueCenterPersonIfExecutedMaster = useCallback(
+    (person: ApiPerson | undefined | null) => {
+      if (!person || !isPrincipalRelationsCacheSource(person)) return;
+      setDiagramQueueCenterPerson({
+        person,
+        requestId: Date.now(),
+      });
+      setMainTab("diagram");
+    },
+    [],
+  );
 
   return {
     mainTab,
     setMainTab,
     diagramQueueCenterPerson,
     onDiagramQueueCenterPersonApplied,
-    onAddPrincipalToDiagram,
+    queueCenterPersonIfExecutedMaster,
   };
 };

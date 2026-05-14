@@ -5,7 +5,7 @@
 1. **検索（❶〜❷）**
    ブラウザは **MediaWiki / Wikidata に直接アクセスしない**。
    - Wikipedia 側の検索・各候補の **人物判定（Wikidata）** は **`GET /api/v1/wiki/person_search_sse`**（SSE）で実行され、進捗イベントが返る。
-   - あわせて保存済み DB 人物のあたり付け用に **`GET /api/v1/person/search`** を **並列**で呼ぶ（検索語が記事タイトルと一致しないとヒットしないため、人物選択後にタイトルでも検索し直して突き合わせる。実装は `frontend/src/lib/wikiPersonMatch.ts`）。
+   - あわせて保存済み DB 人物のあたり付け用に **`GET /api/v1/person/search`** を **並列**で呼ぶ。Wikipedia の結果が返ったあと、各行の記事タイトルから canonical URL を組み立てて **`POST /api/v1/person/resolve_wiki_masters`** で **主体者実行済み**の行を一括突合する（❷「相関図に追加」の主経路）。人物選択後は **記事タイトルおよび括弧を除いた表示名**でも `person/search` を追加で呼び、`frontend/src/lib/wikiPersonMatch.ts` で突き合わせる。
 
 2. **関連抽出（❸）**
    主体記事の **本文・wikitext 解析・2-hop 集計・人物判定** はすべて **`GET /api/v1/wiki/extract_relations_sse`**（SSE）でバックエンドが実行する。クエリ `max_related` で関連者の上限（既定 100、上限 500）を指定できる。
@@ -35,7 +35,7 @@
 （例）「AAA」と入力した場合
 
 1. Wikipedia の検索結果を人物だけに絞って表示（名前に一致する人物ページのタイトルのリスト）
-2. リストから選択すると、その人物ページから関連人物とスコアを抽出する
+2. リストから「関連者を探す」で行を選ぶと、その人物ページから関連人物とスコアを抽出する
    https://ja.wikipedia.org/wiki/%E6%9C%A8%E6%9D%91%E6%8B%93%E5%93%89
 
 |主体者|関連者|point（主体→関連の forward など）|

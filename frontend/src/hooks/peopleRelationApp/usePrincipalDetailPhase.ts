@@ -8,8 +8,12 @@ import {
 import { trackRelatedSearchPhase2 } from "../../lib/analytics";
 import { consumeWikiExtractSse, isAbortError } from "../../lib/wikiSse";
 import {
+  apiPersonFromPersonOutJson,
   displayPersonNameFromWikiTitle,
+  findPostedMasterMatchingExtractMaster,
   isPrincipalRelationsCacheSource,
+  mergeRelationViewsWithPostedPersons,
+  normWikiTitleForMatch,
   pickServerPersonForWikiTitle,
 } from "../../lib/wikiPersonMatch";
 import type {
@@ -56,6 +60,8 @@ export const usePrincipalDetailPhase = ({
   const [masterExecutedAt, setMasterExecutedAt] = useState<string | null>(null);
   const masterExecutedAtLabel = formatExecutedAsMasterAt(masterExecutedAt);
 
+  const [principalRelationPostSaved, setPrincipalRelationPostSaved] = useState(false);
+
   const [excludeZeroReverse, setExcludeZeroReverse] = useState(true);
 
   const displayRelations = useMemo(() => {
@@ -73,6 +79,7 @@ export const usePrincipalDetailPhase = ({
     setSource("");
     setMasterLabel("");
     setMasterExecutedAt(null);
+    setPrincipalRelationPostSaved(false);
     setExcludeZeroReverse(true);
     setProgress(null);
     setError(null);
@@ -147,10 +154,12 @@ export const usePrincipalDetailPhase = ({
         if (session !== detailSessionRef.current) return;
         setMasterLabel(p.title);
         setSource("server");
+        setPrincipalRelationPostSaved(false);
         setMasterExecutedAt(p.executed_as_master_at ?? null);
         setRelations(
           rels.map((r) => ({
             slave: { name: r.slave.name, title: r.slave.title, url: r.slave.url },
+            slavePerson: apiPersonFromPersonOutJson(r.slave),
             forwardPoint: r.forward_point,
             reversePoint: r.reverse_point,
             totalPoint: r.total_point,
@@ -186,6 +195,7 @@ export const usePrincipalDetailPhase = ({
       setError(null);
       devLog("[App] extractFromWikipedia start", { title });
       try {
+        setPrincipalRelationPostSaved(false);
         const { master, relations: relRows } = await consumeWikiExtractSse(
           title,
           WIKI_MAX_RELATED_DISPLAY,
@@ -242,25 +252,28 @@ export const usePrincipalDetailPhase = ({
         setProgress({ phase: "キャッシュ保存", done: 0, total: 1 });
         const posted = await apiPostRelations(payload, master.url);
         if (session !== detailSessionRef.current) return;
-        const principalRow = posted.find((x) => x.master.url === master.url)
-          ?.master;
-        const executedAt =
-          principalRow?.executed_as_master_at ??
-          posted[0]?.master.executed_as_master_at ??
-          null;
+        setPrincipalRelationPostSaved(true);
+        setRelations(mergeRelationViewsWithPostedPersons(relRows, posted));
+        const principalMaster = findPostedMasterMatchingExtractMaster(posted, master);
+        const executedAt = principalMaster?.executed_as_master_at ?? null;
         setMasterExecutedAt(executedAt ?? null);
 
-        if (principalRow) {
+        if (principalMaster) {
           const person: ApiPerson = {
-            id: principalRow.id,
-            name: principalRow.name,
-            title: principalRow.title,
-            url: principalRow.url,
-            has_relations: true,
-            executed_as_master_at: principalRow.executed_as_master_at ?? null,
+            id: principalMaster.id,
+            name: principalMaster.name,
+            title: principalMaster.title,
+            url: principalMaster.url,
+            has_relations: principalMaster.has_relations,
+            executed_as_master_at: principalMaster.executed_as_master_at ?? null,
           };
           setSelected((prev) => {
-            if (!prev || prev.wiki.title !== title) return prev;
+            if (!prev) return prev;
+            if (
+              normWikiTitleForMatch(prev.wiki.title) !== normWikiTitleForMatch(title)
+            ) {
+              return prev;
+            }
             return { ...prev, serverPerson: person };
           });
         } else {
@@ -272,7 +285,12 @@ export const usePrincipalDetailPhase = ({
           if (session !== detailSessionRef.current) return;
           if (refreshed) {
             setSelected((prev) => {
-              if (!prev || prev.wiki.title !== title) return prev;
+              if (!prev) return prev;
+              if (
+                normWikiTitleForMatch(prev.wiki.title) !== normWikiTitleForMatch(title)
+              ) {
+                return prev;
+              }
               return { ...prev, serverPerson: refreshed };
             });
           }
@@ -338,6 +356,7 @@ export const usePrincipalDetailPhase = ({
     masterLabel,
     source,
     masterExecutedAtLabel,
+    principalRelationPostSaved,
     excludeZeroReverse,
     setExcludeZeroReverse,
     displayRelations,

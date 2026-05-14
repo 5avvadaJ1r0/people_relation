@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { apiSearchPerson } from "../../lib/api";
+import { apiResolveWikiMasters, apiSearchPerson } from "../../lib/api";
 import { trackPrincipalInputPhase1 } from "../../lib/analytics";
 import { consumeWikiPersonSearchSse, isAbortError } from "../../lib/wikiSse";
 import { displayPersonNameFromWikiTitle } from "../../lib/wikiPersonMatch";
@@ -30,6 +30,9 @@ export const usePrincipalSearchPhase = ({
   const [hasSearched, setHasSearched] = useState(false);
   const [wikiResults, setWikiResults] = useState<WikiSearchItem[]>([]);
   const [serverMatches, setServerMatches] = useState<ApiPerson[]>([]);
+  const [wikiMastersByPageId, setWikiMastersByPageId] = useState<
+    Record<number, ApiPerson>
+  >({});
   const [wikiEmptyMessage, setWikiEmptyMessage] = useState<string | null>(null);
 
   const wikiDisplayNameCounts = useMemo(() => {
@@ -59,11 +62,12 @@ export const usePrincipalSearchPhase = ({
       setHasSearched(true);
       setWikiResults([]);
       setServerMatches([]);
+      setWikiMastersByPageId({});
       setWikiEmptyMessage(null);
       let wikiResultCount = 0;
       let serverMatchCount = 0;
       try {
-        const wikiP = consumeWikiPersonSearchSse(effectiveQuery, {
+        const wikiRaw = consumeWikiPersonSearchSse(effectiveQuery, {
           signal: searchSignal,
           onProgress: (p) => {
             if (isStaleSearch()) return;
@@ -73,7 +77,9 @@ export const usePrincipalSearchPhase = ({
             if (isStaleSearch()) return;
             setError(m);
           },
-        })
+        });
+
+        const wikiP = wikiRaw
           .then((msg) => {
             if (isStaleSearch()) return;
             setWikiResults(msg.wiki);
@@ -89,6 +95,36 @@ export const usePrincipalSearchPhase = ({
             setWikiEmptyMessage("該当人物はいません");
             wikiResultCount = 0;
             setError(e instanceof Error ? e.message : String(e));
+          });
+
+        const resolveP = wikiRaw
+          .then(async (msg) => {
+            if (isStaleSearch()) return;
+            if (msg.wiki.length === 0) {
+              setWikiMastersByPageId({});
+              return;
+            }
+            try {
+              const out = await apiResolveWikiMasters(
+                msg.wiki.map((w) => ({ title: w.title, pageid: w.pageid })),
+                { signal: searchSignal },
+              );
+              if (isStaleSearch()) return;
+              const next: Record<number, ApiPerson> = {};
+              for (const row of out.items) {
+                if (row.person?.has_relations) {
+                  next[row.pageid] = row.person;
+                }
+              }
+              setWikiMastersByPageId(next);
+            } catch (e: unknown) {
+              if (isAbortError(e) || isStaleSearch()) return;
+              setWikiMastersByPageId({});
+            }
+          })
+          .catch((e: unknown) => {
+            if (isAbortError(e) || isStaleSearch()) return;
+            setWikiMastersByPageId({});
           });
 
         const serverP = apiSearchPerson(effectiveQuery, {
@@ -108,7 +144,7 @@ export const usePrincipalSearchPhase = ({
             );
           });
 
-        await Promise.all([wikiP, serverP]);
+        await Promise.all([wikiP, serverP, resolveP]);
       } catch (e: unknown) {
         if (isAbortError(e) || isStaleSearch()) return;
         setError(e instanceof Error ? e.message : String(e));
@@ -134,6 +170,7 @@ export const usePrincipalSearchPhase = ({
     hasSearched,
     wikiResults,
     serverMatches,
+    wikiMastersByPageId,
     wikiEmptyMessage,
     wikiDisplayNameCounts,
     onSearch,
