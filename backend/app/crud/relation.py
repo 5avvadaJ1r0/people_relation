@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 from sqlalchemy import and_, delete, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, aliased
 
 from app.model import Relation
@@ -8,7 +11,10 @@ from app.model import Relation
 
 def delete_relations_where_master(db: Session, *, master_id: int) -> int:
     """主体を master とする forward 行をすべて削除する。"""
-    res = db.execute(delete(Relation).where(Relation.master_person_id == master_id))
+    res = cast(
+        CursorResult[Any],
+        db.execute(delete(Relation).where(Relation.master_person_id == master_id)),
+    )
     return int(res.rowcount or 0)
 
 
@@ -21,11 +27,14 @@ def delete_reverse_edges_to_master_from_given_masters(
     """
     if not reverse_master_ids:
         return 0
-    res = db.execute(
-        delete(Relation).where(
-            Relation.slave_person_id == slave_person_id,
-            Relation.master_person_id.in_(reverse_master_ids),
-        )
+    res = cast(
+        CursorResult[Any],
+        db.execute(
+            delete(Relation).where(
+                Relation.slave_person_id == slave_person_id,
+                Relation.master_person_id.in_(reverse_master_ids),
+            )
+        ),
     )
     return int(res.rowcount or 0)
 
