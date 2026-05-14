@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
-from bs4 import BeautifulSoup, Comment, PageElement, Tag
+from bs4 import BeautifulSoup, Comment, Tag
+from bs4.element import PageElement
 
 from app.services.wiki.parser.encoding_utils import (
     is_noise_wiki_section_fragment,
