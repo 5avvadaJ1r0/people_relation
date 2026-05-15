@@ -152,6 +152,53 @@ def test_build_forward_ranked_excludes_master_norms() -> None:
     assert "他人" in names
 
 
+def test_merge_forward_candidates_merges_redirect_synonyms() -> None:
+    """転送で同一記事になる複数候補は 1 行にまとめ主体値を合算する。"""
+    from app.services.wiki.extract.two_hop.canonical_forward_merge import (
+        merge_forward_candidates_by_canonical_titles,
+    )
+
+    class _WikiStub:
+        __slots__ = ("resolve_canonical_titles_for_titles",)
+
+    async def run() -> list[ForwardCandidate]:
+        wiki = _WikiStub()
+
+        async def resolve(titles: list[str]) -> dict[str, str]:
+            out: dict[str, str] = {}
+            for t in titles:
+                if t == "SynonymRedirect":
+                    out[t] = "CanonicalMain"
+                else:
+                    out[t] = t
+            return out
+
+        wiki.resolve_canonical_titles_for_titles = resolve
+        ranked: list[ForwardCandidate] = [
+            {
+                "name": "SynonymRedirect",
+                "point": 1,
+                "href": "/wiki/SynonymRedirect",
+                "title": None,
+                "reverseCheckPoint": 1,
+            },
+            {
+                "name": "CanonicalMain",
+                "point": 1,
+                "href": "/wiki/CanonicalMain",
+                "title": None,
+                "reverseCheckPoint": 1,
+            },
+        ]
+        return await merge_forward_candidates_by_canonical_titles(wiki, ranked)
+
+    merged = asyncio.run(run())
+    names = [r.get("name") for r in merged]
+    assert names.count("CanonicalMain") == 1
+    row = next(r for r in merged if r.get("name") == "CanonicalMain")
+    assert int(row.get("point") or 0) == 2
+
+
 def test_reverse_point_for_slave_skips_extract_when_link_score_positive() -> None:
     wiki = AsyncMock()
     wiki.fetch_wikitext_by_title = AsyncMock(return_value="本文 [[山田一郎]]")

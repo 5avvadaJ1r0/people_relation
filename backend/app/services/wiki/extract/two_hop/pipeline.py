@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 
 from app import crud
 from app.services.wiki.api.ja_mediawiki import JaWikipediaClient
+from app.services.wiki.extract.two_hop.canonical_forward_merge import (
+    merge_forward_candidates_by_canonical_titles,
+)
 from app.services.wiki.extract.two_hop.fetcher import (
     load_master_article_context,
     resolve_missing_hrefs,
@@ -49,6 +52,8 @@ async def extract_two_hop_relations(
     )
 
     ranked, forward_keep = build_forward_ranked_list(ctx, max_related=max_related)
+
+    ranked = await merge_forward_candidates_by_canonical_titles(wiki, ranked)
 
     await resolve_missing_hrefs(wiki, ranked=ranked, on_progress=on_progress)
 
