@@ -56,6 +56,24 @@ const IconCircleMinus = () => (
   </svg>
 );
 
+const IconFitDisplay = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={18}
+    height={18}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <path d="M7 3H4a1 1 0 0 0-1 1v3M17 3h3a1 1 0 0 1 1 1v3M7 21H4a1 1 0 0 1-1-1v-3M17 21h3a1 1 0 0 0 1-1v-3" />
+    <rect x="9" y="9" width="6" height="6" rx="1" />
+  </svg>
+);
+
 /** Font Awesome Solid「arrow-up-from-bracket」相当（Font Awesome Free 6.5.2 / CC BY 4.0） */
 const IconArrowUpFromBracket = () => (
   <svg
@@ -263,6 +281,10 @@ export const DiagramTabPanel = ({
       }
       setDiagramShareError(e instanceof Error ? e.message : String(e));
     }
+  }, []);
+
+  const onFitDiagramViewport = useCallback(() => {
+    diagramViewRef.current?.fitDisplayToViewport();
   }, []);
 
   useEffect(() => {
@@ -600,6 +622,15 @@ export const DiagramTabPanel = ({
                   >
                     <IconCircleMinus />
                     関連者を減らす
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || !hasDiagram}
+                    title="ズームと位置を調整し、相関図全体を表示領域に収めます"
+                    onClick={onFitDiagramViewport}
+                  >
+                    <IconFitDisplay />
+                    表示サイズ最適化
                   </button>
                   {hasDiagram && webShareImageSupported ? (
                     <button

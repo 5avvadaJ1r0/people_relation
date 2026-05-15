@@ -40,6 +40,12 @@ const CORRELATION_FLOW_DOM_ID = "correlation-diagram-rf";
 /** fitView アニメ後にノードが落ち着いてから PNG を切る */
 const SHARE_PREFETCH_DEBOUNCE_MS = 480;
 
+/** 初回レイアウト・手動「表示サイズ最適化」と共通 */
+const CORRELATION_DIAGRAM_FIT_VIEW_OPTIONS = {
+  padding: 0.2,
+  duration: 400,
+} as const;
+
 type InnerShareApi = {
   /** プリフェッチ済み Blob で共有（`navigator.share` は同期的に呼ぶ） */
   shareFromPrefetched: () => Promise<void>;
@@ -48,6 +54,8 @@ type InnerShareApi = {
 /** 親（ヘッダー等）から `navigator.share` で画像共有するときに使う ref。 */
 export type CorrelationDiagramViewHandle = {
   shareAsImage: () => Promise<void>;
+  /** ズーム・パンを調整し、ノード全体が表示領域に収まるようにする */
+  fitDisplayToViewport: () => void;
 };
 
 const CorrelationDiagramShareBind = ({
@@ -224,7 +232,7 @@ const FitViewOnReady = ({
     let raf2 = 0;
     raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => {
-        fitView({ padding: 0.2, duration: 400 });
+        fitView(CORRELATION_DIAGRAM_FIT_VIEW_OPTIONS);
       });
     });
     return () => {
@@ -232,6 +240,28 @@ const FitViewOnReady = ({
       cancelAnimationFrame(raf2);
     };
   }, [fitView, fitTrigger, nodesReady]);
+  return null;
+};
+
+/** React Flow 内の `fitView` を親の `useImperativeHandle` から呼ぶ */
+const FitViewActionBind = ({
+  actionRef,
+}: {
+  actionRef: MutableRefObject<(() => void) | null>;
+}) => {
+  const { fitView } = useReactFlow();
+  useLayoutEffect(() => {
+    actionRef.current = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          fitView(CORRELATION_DIAGRAM_FIT_VIEW_OPTIONS);
+        });
+      });
+    };
+    return () => {
+      actionRef.current = null;
+    };
+  }, [actionRef, fitView]);
   return null;
 };
 
@@ -257,6 +287,7 @@ export const CorrelationDiagramView = forwardRef<
   ref,
 ) {
   const innerShareApiRef = useRef<InnerShareApi | null>(null);
+  const fitViewActionRef = useRef<(() => void) | null>(null);
   const layoutOpt = useMemo(
     () =>
       members.length === 2
@@ -312,6 +343,10 @@ export const CorrelationDiagramView = forwardRef<
         }
         return share();
       },
+      fitDisplayToViewport: () => {
+        if (empty) return;
+        fitViewActionRef.current?.();
+      },
     }),
     [empty],
   );
@@ -355,6 +390,7 @@ export const CorrelationDiagramView = forwardRef<
             innerShareApiRef={innerShareApiRef}
             onDiagramShareReadyChange={onDiagramShareReadyChange}
           />
+          <FitViewActionBind actionRef={fitViewActionRef} />
           <Background gap={20} color="#1e293b" size={1.15} />
           <Controls showInteractive={false} />
           <MiniMap

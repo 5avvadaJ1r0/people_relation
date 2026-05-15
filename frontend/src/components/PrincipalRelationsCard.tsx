@@ -1,6 +1,10 @@
 import { isExecutedPrincipalForDiagram, isPrincipalRelationsCacheSource } from "../lib/wikiPersonMatch";
 import { WIKI_MAX_RELATED_DISPLAY } from "../wikiDisplayConstants";
 import type { ApiPerson } from "../lib/types";
+import {
+  PrincipalDiagramAddActionIcon,
+  PrincipalRelatedSearchActionIcon,
+} from "./principalRelatedTableActionIcons";
 import type {
   PeopleRelationPrincipalDetailModel,
   PeopleRelationSearchActionsModel,
@@ -50,7 +54,7 @@ export const PrincipalRelationsCard = ({
   } = principalDetail;
 
   return (
-    <div className="card" ref={detailRef}>
+    <div className="card principalRelationsCard" ref={detailRef}>
       <h2>
         ❸ 主体者・関連者
         <span className="subtitle">
@@ -99,14 +103,14 @@ export const PrincipalRelationsCard = ({
       )}
 
       {relations.length > 0 && displayRelations.length > 0 ? (
-        <table className="table">
+        <table className="table principalRelationsRelationsTable">
           <thead>
             <tr>
               <th>関連者</th>
-              <th style={{ textAlign: "right" }}></th>
-              <th style={{ width: 80, textAlign: "right" }}>主体値</th>
-              <th style={{ width: 80, textAlign: "right" }}>関連値</th>
-              <th style={{ width: 80, textAlign: "right" }}>合計値</th>
+                <th className="principalRelationsActionsCol"></th>
+              <th className="principalRelationsScoreCol">主体値</th>
+              <th className="principalRelationsScoreCol">関連値</th>
+              <th className="principalRelationsScoreCol">合計値</th>
             </tr>
           </thead>
           <tbody>
@@ -121,31 +125,41 @@ export const PrincipalRelationsCard = ({
                     {r.slave.name}
                   </a>
                 </td>
-                <td style={{ textAlign: "right" }}>
+                <td className="principalRelationsActionsCol">
                   <span className="principalRelatedRowActions">
                     {canAddSlaveToDiagram ? (
                       <button
                         type="button"
-                        className="principalDiagramAddLink"
+                        className="principalDiagramAddLink principalRelatedTableActionBtn"
                         disabled={busy}
+                        aria-label="相関図に追加"
+                        title="相関図に追加"
                         onClick={() => onAddRelatedPersonToDiagram(sp)}
                       >
-                        相関図に追加
+                        <span className="principalRelatedTableActionBtn__icon">
+                          <PrincipalDiagramAddActionIcon />
+                        </span>
+                        <span className="principalRelatedTableActionBtn__label">相関図に追加</span>
                       </button>
                     ) : null}
                     <button
                       type="button"
-                      className="principalRelatedSearchBtn"
+                      className="principalRelatedSearchBtn principalRelatedTableActionBtn"
                       disabled={busy}
+                      aria-label="関連者を探す"
+                      title="関連者を探す"
                       onClick={() => runAsMaster(r.slave.name, r.slave.title)}
                     >
-                      関連者を探す
+                      <span className="principalRelatedTableActionBtn__icon">
+                        <PrincipalRelatedSearchActionIcon />
+                      </span>
+                      <span className="principalRelatedTableActionBtn__label">関連者を探す</span>
                     </button>
                   </span>
                 </td>
-                <td style={{ textAlign: "right" }}>{r.forwardPoint}</td>
-                <td style={{ textAlign: "right" }}>{r.reversePoint}</td>
-                <td style={{ textAlign: "right" }}>
+                <td className="principalRelationsScoreCol">{r.forwardPoint}</td>
+                <td className="principalRelationsScoreCol">{r.reversePoint}</td>
+                <td className="principalRelationsScoreCol">
                   <span className="pill">{r.totalPoint}</span>
                 </td>
               </tr>
