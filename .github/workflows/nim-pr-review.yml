@@ -1,0 +1,61 @@
+# fork 由来の PR では pull_request イベントではリポジトリ secrets が渡らないため、
+# 同一リポジトリ内のブランチ PR のみを対象とする。
+name: NVIDIA NIM PR review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: nim-pr-review-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  nim-review:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.fork == false
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      NIM_MODEL: ${{ vars.NIM_MODEL }}
+      NIM_API_BASE_URL: ${{ vars.NIM_API_BASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check NVIDIA_API_KEY
+        id: nim_key
+        run: |
+          if [ -n "${NVIDIA_API_KEY}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::NVIDIA_API_KEY が未設定です。Settings > Secrets and variables > Actions に NVIDIA_API_KEY を追加してください。"
+          fi
+
+      - uses: reviewdog/action-setup@v1
+        if: steps.nim_key.outputs.present == 'true'
+
+      - name: Run NVIDIA NIM review (reviewdog inline comments)
+        if: steps.nim_key.outputs.present == 'true'
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/nim_pr_review.py |
+            reviewdog \
+              -f=rdjson \
+              -name="nvidia-nim" \
+              -reporter=github-pr-review \
+              -filter-mode=diff_context \
+              -level=warning
