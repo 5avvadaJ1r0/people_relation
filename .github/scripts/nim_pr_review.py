@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""PR 差分を NVIDIA NIM API に送り、レビュー結果を PR コメントとして投稿する（GitHub Actions 用・標準ライブラリのみ）。"""
+"""PR 差分を NVIDIA NIM API に送り、reviewdog rdjson 形式で stdout に出力する。"""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.error
 import urllib.request
+
+SEVERITIES = frozenset({"ERROR", "WARNING", "INFO"})
 
 
 def run_gh(args: list[str], *, token: str) -> str:
@@ -27,23 +30,40 @@ def run_gh(args: list[str], *, token: str) -> str:
 
 
 def build_review_prompt(diff: str) -> str:
-    return f"""あなたは熟練のソフトウェアエンジニアです。次の Pull Request の差分をレビューし、日本語で要点をまとめてください。
+    return f"""あなたは熟練のソフトウェアエンジニアです。次の Pull Request の差分をレビューし、指摘事項を JSON のみで返してください。
 
 観点（該当がなければ省略可）:
 - バグ・ロジックミス・境界条件
 - パフォーマンス・拡張性
 - セキュリティ・秘密情報の扱い
 - 可読性・テスト観点
-- リファクタリング
 
 ## 差分（unified diff）
 ```
 {diff}
 ```
 
-出力形式:
-- まず全体所見（2〜5文）
-- その後、重要度が高い順に箇条書き（各項目1〜3文）
+## 出力ルール（厳守）
+- 応答は JSON オブジェクトのみ（説明文・Markdown・コードフェンス禁止）
+- 差分に含まれるファイルのみ path に指定する（存在しないパスは書かない）
+- line は変更後ファイルの 1 始まり行番号（unified diff の + 側）
+- 重要度の高い指摘を最大 20 件まで
+- 指摘がなければ diagnostics は空配列
+
+## JSON スキーマ
+{{
+  "diagnostics": [
+    {{
+      "path": "relative/path/to/file.ext",
+      "line": 1,
+      "end_line": 1,
+      "message": "指摘内容（日本語、1〜3文）",
+      "severity": "ERROR"
+    }}
+  ]
+}}
+
+severity は ERROR / WARNING / INFO のいずれか。
 """
 
 
@@ -52,7 +72,7 @@ def call_nim_chat(*, api_key: str, base_url: str, model: str, prompt: str) -> st
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.4,
+        "temperature": 0.2,
         "max_tokens": 8192,
     }
     req = urllib.request.Request(
@@ -84,6 +104,101 @@ def call_nim_chat(*, api_key: str, base_url: str, model: str, prompt: str) -> st
             f"NIM の応答形式が想定外です: {json.dumps(data)[:2000]}"
         )
     return str(content)
+
+
+def extract_json_object(text: str) -> dict:
+    stripped = text.strip()
+    try:
+        parsed = json.loads(stripped)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", stripped, re.IGNORECASE)
+    if fence:
+        parsed = json.loads(fence.group(1).strip())
+        if isinstance(parsed, dict):
+            return parsed
+
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start >= 0 and end > start:
+        parsed = json.loads(stripped[start : end + 1])
+        if isinstance(parsed, dict):
+            return parsed
+
+    raise RuntimeError(f"NIM の応答から JSON を抽出できません: {stripped[:500]}")
+
+
+def normalize_severity(value: object) -> str:
+    if isinstance(value, str):
+        upper = value.strip().upper()
+        if upper in SEVERITIES:
+            return upper
+    return "WARNING"
+
+
+def normalize_line(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, float) and value.is_integer():
+        line = int(value)
+        return line if line > 0 else None
+    if isinstance(value, str) and value.strip().isdigit():
+        line = int(value.strip())
+        return line if line > 0 else None
+    return None
+
+
+def to_rdjson(nim_result: dict, *, model: str) -> dict:
+    raw_items = nim_result.get("diagnostics")
+    if not isinstance(raw_items, list):
+        raw_items = []
+
+    diagnostics: list[dict] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip().lstrip("./")
+        if not path or path.startswith(".."):
+            continue
+        line = normalize_line(item.get("line"))
+        if line is None:
+            continue
+        end_line = normalize_line(item.get("end_line")) or line
+        if end_line < line:
+            end_line = line
+        message = str(item.get("message") or "").strip()
+        if not message:
+            continue
+
+        location: dict = {
+            "path": path,
+            "range": {
+                "start": {"line": line},
+                "end": {"line": end_line},
+            },
+        }
+        diagnostic: dict = {
+            "message": message,
+            "location": location,
+            "severity": normalize_severity(item.get("severity")),
+        }
+        code = item.get("code")
+        if isinstance(code, str) and code.strip():
+            diagnostic["code"] = {"value": code.strip()}
+        diagnostics.append(diagnostic)
+
+    return {
+        "source": {
+            "name": "nvidia-nim",
+            "url": f"https://build.nvidia.com/ (model: {model})",
+        },
+        "diagnostics": diagnostics,
+    }
 
 
 def main() -> int:
@@ -120,33 +235,19 @@ def main() -> int:
         diff = diff[:max_chars] + "\n\n[... diff truncated for API size ...]\n"
 
     try:
-        text = call_nim_chat(
+        nim_text = call_nim_chat(
             api_key=api_key,
             base_url=base_url,
             model=model,
             prompt=build_review_prompt(diff),
         )
-    except RuntimeError as e:
+        nim_result = extract_json_object(nim_text)
+        rdjson = to_rdjson(nim_result, model=model)
+    except (RuntimeError, json.JSONDecodeError) as e:
         print(str(e), file=sys.stderr)
         return 1
 
-    review_path = os.environ.get("REVIEW_PATH") or "nim-review.md"
-    with open(review_path, "w", encoding="utf-8") as f:
-        f.write("## NVIDIA NIM によるレビュー\n\n")
-        f.write(text)
-        f.write("\n\n---\n*Automated review (model: ")
-        f.write(model)
-        f.write(")*\n")
-
-    try:
-        run_gh(
-            ["pr", "comment", pr, "--repo", repo, "--body-file", review_path],
-            token=token,
-        )
-    except RuntimeError as e:
-        print(str(e), file=sys.stderr)
-        return 1
-
+    print(json.dumps(rdjson, ensure_ascii=False))
     return 0
 
 
