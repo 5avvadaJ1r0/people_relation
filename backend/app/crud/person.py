@@ -8,7 +8,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.crud.relation import person_ids_with_forward_relation
-from app.model import Person, WikiHumanCache
+from app.model import Person, Relation, WikiHumanCache
 
 
 def normalize_url(url: str) -> str:
@@ -143,41 +143,48 @@ def get_person_by_url(db: Session, *, url: str) -> Person | None:
 
 
 def pick_random_person_not_executed_as_master(db: Session) -> Person | None:
-    """`executed_as_master` が false の人物をランダムに 1 件返す（該当なしは None）。
+    """`executed_as_master` が false の人物から 1 件返す（該当なしは None）。
 
-    `ORDER BY random()` は候補全件のソートが必要になるため、未実行行の
-    min/max id から乱数を引き、部分インデックスで id 範囲検索する。
+    `relation` に master / slave として登場する件数が最大の人物を優先する。
+    件数が 0、または最大件数が同数の人物が複数いる場合はその中からランダムに選ぶ。
     """
-    min_id, max_id = db.execute(
-        select(func.min(Person.id), func.max(Person.id)).where(
-            Person.executed_as_master.is_(False)
+    involvement = (
+        select(Relation.master_person_id.label("person_id"))
+        .union_all(select(Relation.slave_person_id.label("person_id")))
+        .subquery()
+    )
+    rel_count = (
+        select(
+            involvement.c.person_id,
+            func.count().label("rel_count"),
         )
-    ).one()
-    if min_id is None:
+        .group_by(involvement.c.person_id)
+        .subquery()
+    )
+    rel_count_col = func.coalesce(rel_count.c.rel_count, 0)
+
+    max_count = db.scalar(
+        select(func.max(rel_count_col))
+        .select_from(Person)
+        .outerjoin(rel_count, Person.id == rel_count.c.person_id)
+        .where(Person.executed_as_master.is_(False))
+    )
+    if max_count is None:
         return None
 
-    target = random.randint(min_id, max_id)
-    person = db.scalar(
-        select(Person)
-        .where(
-            Person.executed_as_master.is_(False),
-            Person.id >= target,
-        )
-        .order_by(Person.id)
-        .limit(1)
+    candidates = list(
+        db.scalars(
+            select(Person)
+            .outerjoin(rel_count, Person.id == rel_count.c.person_id)
+            .where(
+                Person.executed_as_master.is_(False),
+                rel_count_col == max_count,
+            )
+        ).all()
     )
-    if person is not None:
-        return person
-
-    return db.scalar(
-        select(Person)
-        .where(
-            Person.executed_as_master.is_(False),
-            Person.id < target,
-        )
-        .order_by(Person.id.desc())
-        .limit(1)
-    )
+    if not candidates:
+        return None
+    return random.choice(candidates)
 
 
 def mark_executed_as_master_by_url(db: Session, *, url: str) -> Person | None:
