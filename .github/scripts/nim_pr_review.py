@@ -100,9 +100,7 @@ def call_nim_chat(*, api_key: str, base_url: str, model: str, prompt: str) -> st
     message = choices[0].get("message") or {}
     content = message.get("content")
     if not content:
-        raise RuntimeError(
-            f"NIM の応答形式が想定外です: {json.dumps(data)[:2000]}"
-        )
+        raise RuntimeError(f"NIM の応答形式が想定外です: {json.dumps(data)[:2000]}")
     return str(content)
 
 

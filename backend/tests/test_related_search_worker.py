@@ -101,3 +101,44 @@ def test_pick_random_person_not_executed_as_master() -> None:
         assert picked.url == "https://example.com/not-exec-a"
     finally:
         db.close()
+
+
+def test_pick_random_person_skips_executed_and_handles_id_gaps() -> None:
+    db: Session = SessionLocal()
+    try:
+        low = Person(
+            name="未実行低",
+            title="未実行低題",
+            url="https://example.com/not-exec-low",
+            executed_as_master=False,
+        )
+        high = Person(
+            name="未実行高",
+            title="未実行高題",
+            url="https://example.com/not-exec-high",
+            executed_as_master=False,
+        )
+        db.add_all(
+            [
+                low,
+                Person(
+                    name="実行済",
+                    title="実行済題",
+                    url="https://example.com/exec-gap",
+                    executed_as_master=True,
+                ),
+                high,
+            ]
+        )
+        db.commit()
+        db.refresh(low)
+        db.refresh(high)
+
+        picked_urls: set[str] = set()
+        for _ in range(30):
+            picked = crud.pick_random_person_not_executed_as_master(db)
+            assert picked is not None
+            picked_urls.add(picked.url)
+        assert picked_urls == {low.url, high.url}
+    finally:
+        db.close()
