@@ -1,63 +1,93 @@
 import type { ChangeEvent, KeyboardEvent } from "react";
-import { displayPersonNameFromWikiTitle } from "../lib/wikiPersonMatch";
-import type {
-  PeopleRelationAppBusyModel,
-  PeopleRelationListSearchPanelModel,
-} from "../peopleRelationAppModel";
+import type { PeopleRelationListSearchPanelModel } from "../peopleRelationAppModel";
 
 type PrincipalSearchCardProps = {
   error: string | null;
-  appBusy: PeopleRelationAppBusyModel;
   listSearch: PeopleRelationListSearchPanelModel;
 };
 
 export const PrincipalSearchCard = ({
   error,
-  appBusy,
   listSearch,
 }: PrincipalSearchCardProps) => {
   const {
     query,
     setQuery,
     queryInputRef,
-    onSearch,
-    wikiResults,
-    wikiDisplayNameCounts,
-    hasSearched,
-    wikiEmptyMessage,
-    onSelect,
-    getDiagramPersonIfReadyForWikiRow,
-    onAddWikiRowPersonToDiagram,
+    matches,
+    suggestFetched,
+    setSuggestFocused,
+    suggestPanelOpen,
+    highlightIdx,
+    setHighlightIdx,
+    clearQuery,
+    onSelectPerson,
   } = listSearch;
-  const { busy, progress, isSearchProgress, progressPct } = appBusy;
 
   const handleQueryChange = (e: ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
   };
 
-  const handleQueryKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") void onSearch();
+  const selectPerson = (idx: number) => {
+    const p = matches[idx];
+    if (!p) return;
+    setQuery(p.name);
+    setHighlightIdx(-1);
+    void onSelectPerson(p);
   };
 
-  const handleClearQuery = () => {
-    setQuery("");
-    window.setTimeout(() => queryInputRef.current?.focus(), 0);
+  const handleQueryKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setHighlightIdx(-1);
+      queryInputRef.current?.blur();
+      return;
+    }
+    if (!suggestPanelOpen) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (matches.length === 0) return;
+      setHighlightIdx((i) => (i < matches.length - 1 ? i + 1 : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (matches.length === 0) return;
+      setHighlightIdx((i) => (i <= 0 ? matches.length - 1 : i - 1));
+    } else if (e.key === "Enter") {
+      if (highlightIdx >= 0 && matches[highlightIdx]) {
+        e.preventDefault();
+        selectPerson(highlightIdx);
+      }
+    }
   };
 
   return (
     <div className="card principalSearchCard">
       <h2>❶ 主体者入力</h2>
-      <div className="row">
+      <div className="principalSuggestWrap diagramSuggestWrap">
         <div className="textInputWrap">
           <input
             ref={queryInputRef}
             id="query"
             name="query"
             type="text"
+            role="combobox"
+            aria-expanded={suggestPanelOpen}
+            aria-autocomplete="list"
+            aria-controls="principal-suggest-listbox"
+            aria-activedescendant={
+              highlightIdx >= 0 && matches[highlightIdx]
+                ? `principal-suggest-opt-${matches[highlightIdx].id}`
+                : undefined
+            }
+            autoComplete="off"
             value={query}
-            placeholder="著名人の氏名を入力してください"
+            placeholder="氏名の一部を入力して選択"
             className={query.trim().length > 0 ? "hasRightIcon" : ""}
             onChange={handleQueryChange}
+            onFocus={() => setSuggestFocused(true)}
+            onBlur={() => {
+              window.setTimeout(() => setSuggestFocused(false), 120);
+            }}
             onKeyDown={handleQueryKeyDown}
           />
           {query.trim().length > 0 && (
@@ -66,7 +96,8 @@ export const PrincipalSearchCard = ({
               className="textInputRightIcon"
               aria-label="入力をクリア"
               title="クリア"
-              onClick={handleClearQuery}
+              onMouseDown={(ev) => ev.preventDefault()}
+              onClick={clearQuery}
             >
               <svg
                 viewBox="0 0 20 20"
@@ -83,83 +114,48 @@ export const PrincipalSearchCard = ({
             </button>
           )}
         </div>
-        <button
-          className="primary"
-          disabled={busy || query.trim().length === 0}
-          onClick={() => void onSearch()}
-        >
-          検索
-        </button>
+
+        {suggestPanelOpen ? (
+          <div
+            id="principal-suggest-listbox"
+            className="diagramSuggestPanel"
+            role="listbox"
+          >
+            {matches.length > 0 ? (
+              matches.map((p, idx) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  id={`principal-suggest-opt-${p.id}`}
+                  role="option"
+                  aria-selected={highlightIdx === idx}
+                  className={
+                    highlightIdx === idx
+                      ? "diagramSuggestOption diagramSuggestOptionActive"
+                      : "diagramSuggestOption"
+                  }
+                  onMouseDown={(ev) => ev.preventDefault()}
+                  onMouseEnter={() => setHighlightIdx(idx)}
+                  onClick={() => selectPerson(idx)}
+                >
+                  {p.name}
+                  {p.title !== p.name ? (
+                    <span className="principalSuggestOptionSub">（{p.title}）</span>
+                  ) : null}
+                </button>
+              ))
+            ) : (
+              <div className="diagramSuggestEmpty">
+                {suggestFetched ? "該当する人物がいません。" : null}
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {error && (
         <div style={{ marginTop: 10 }} className="danger">
           {error}
-        </div>
-      )}
-
-      {progress && isSearchProgress && (
-        <div className="progressWrap">
-          <div className="muted" style={{ marginBottom: 6, fontSize: 12 }}>
-            {progress.phase}（{progress.done}/{progress.total}）
-          </div>
-          <div className="progress">
-            <div className="bar" style={{ width: `${progressPct}%` }} />
-          </div>
-        </div>
-      )}
-
-      <h2 style={{ marginTop: 14 }}>❷ 主体者検索結果</h2>
-      <div className="list">
-        {wikiResults.map((r) => {
-          const displayName = displayPersonNameFromWikiTitle(r.title);
-          const isAmbiguous = (wikiDisplayNameCounts.get(displayName) ?? 0) >= 2;
-          const label = isAmbiguous ? r.title : displayName;
-          const diagramPerson = getDiagramPersonIfReadyForWikiRow(r);
-          return (
-            <div key={r.pageid} className="item">
-              <div className="itemTitle">
-                <div style={{ fontWeight: 700 }}>{label}</div>
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
-                {diagramPerson ? (
-                  <button
-                    type="button"
-                    className="principalDiagramAddLink"
-                    disabled={busy}
-                    onClick={() => onAddWikiRowPersonToDiagram(diagramPerson)}
-                  >
-                    相関図に追加
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="principalWikiSelectLink"
-                  disabled={busy}
-                  onClick={() => void onSelect(r)}
-                >
-                  関連者を探す
-                </button>
-              </div>
-            </div>
-          );
-        })}
-        {wikiResults.length === 0 && !hasSearched && (
-          <div className="subtitle">まだ検索していません。</div>
-        )}
-        {wikiResults.length === 0 && hasSearched && wikiEmptyMessage && (
-          <div className="subtitle">{wikiEmptyMessage}</div>
-        )}
-      </div>
-
-      {progress && !isSearchProgress && (
-        <div className="progressWrap">
-          <div className="muted" style={{ marginBottom: 6, fontSize: 12 }}>
-            {progress.phase}（{progress.done}/{progress.total}）
-          </div>
-          <div className="progress">
-            <div className="bar" style={{ width: `${progressPct}%` }} />
-          </div>
         </div>
       )}
     </div>

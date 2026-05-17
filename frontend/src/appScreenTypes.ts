@@ -1,8 +1,7 @@
-import type { ApiPerson, WikiSearchItem } from "./lib/types";
+import type { ApiPerson } from "./lib/types";
 
 export type SelectedPrincipal = {
-  wiki: WikiSearchItem;
-  serverPerson?: ApiPerson;
+  serverPerson: ApiPerson;
 };
 
 export type MainAppTab = "list" | "diagram";
