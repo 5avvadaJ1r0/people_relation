@@ -15,10 +15,33 @@ _NOISE_SECTION_FRAGMENTS = frozenset(
         "出典",
         "関連項目",
         "注釈",
+        "その他の関連項目",
         "References",
         "External links",
         "See also",
     }
+)
+
+# level-2 見出しとして wikitext / parse HTML / extract からリンク集計除外する節（日本語記事向け）。
+WIKI_L2_LINK_NOISE_SECTION_HEADINGS: frozenset[str] = frozenset(
+    {
+        "脚注",
+        "出典",
+        "参考文献",
+        "関連項目",
+        "外部リンク",
+    }
+)
+
+# explaintext extract 用（上記 + 脚注直後に来やすい見出し）。
+WIKI_EXTRACT_PLAIN_NOISE_SECTION_HEADINGS: tuple[str, ...] = (
+    "脚注",
+    "注釈",
+    "出典",
+    "参考文献",
+    "関連項目",
+    "その他の関連項目",
+    "外部リンク",
 )
 
 
@@ -71,6 +94,12 @@ def wiki_internal_path_from_normalized_title(norm: str) -> str:
 def is_noise_wiki_section_fragment(fragment: str) -> bool:
     n = normalize_wiki_link_title(str(fragment or "").replace("+", " "))
     return n in _NOISE_SECTION_FRAGMENTS
+
+
+def is_wiki_l2_link_noise_section_heading(heading: str) -> bool:
+    """``== 見出し ==`` がリンク集計除外対象か（normalize 後に照合）。"""
+    n = normalize_wiki_link_title(heading)
+    return bool(n) and n in WIKI_L2_LINK_NOISE_SECTION_HEADINGS
 
 
 # MediaWiki の「名前空間:ページ」形式のみ除外。記事タイトルに ':' が含まれるもの（例: STAR:LIGHT）は除外しない。

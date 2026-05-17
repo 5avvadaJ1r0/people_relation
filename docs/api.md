@@ -768,7 +768,7 @@ sequenceDiagram
   - **進捗**: `{"type":"progress","phase":"人物判定処理中","done":120,"total":400}` など（段階例: 主体者情報取得、主体者情報解析、候補確認、人物判定、関連者検索）
   - **完了**: `{"type":"extract_result","master":{"name":"...","title":"...","url":"https://ja.wikipedia.org/wiki/..."},"relations":[{"slave":{...},"forwardPoint":1,"reversePoint":0,"totalPoint":1,"hasWikiPage":true},...]}`
   - **エラー**: `{"type":"error","message":"..."}`
-- **wikitext リンク集計**: サーバーは `mwparserfromhell` により wikitext を解析し、レベル2見出し `== 脚注 ==` / `== 外部リンク ==` 節を除いたうえで `[[...]]` リンクを集計する（旧フロントの `wtf_wikipedia` ベース実装と同等の意図）。
+- **wikitext リンク集計**: サーバーは `mwparserfromhell` により wikitext を解析し、レベル2見出し **`== 脚注 ==` / `== 出典 ==` / `== 参考文献 ==` / `== 関連項目 ==` / `== 外部リンク ==`** 節（および外部リンクが最終見出しのときはその以降の navbox 等）を除いたうえで `[[...]]` リンクを集計する。parse HTML・`explaintext` extract も同趣旨でノイズ節を除去する。
 - **人物判定**: 抽出パイプライン内の正規化マージ後フィルタでは **`batch_human_checks_with_db_redis_priority`**（`live_batch_resolver` で外向きクォータ付き **`live_resolve_human_checks_wbget_batch`**）を用いる。単発の人物確認では **`app.services.wiki.human.is_human_by_title`**（同一キャッシュ階層）を直接 await する。
 
 #### 8-3) フロント（React）の初回選択とキャッシュ（参照実装）
@@ -808,6 +808,7 @@ sequenceDiagram
 
 ## 変更履歴
 
+- 2026-05-17: Wikipedia リンク集計のノイズ節除外を **`脚注`・`出典`・`参考文献`・`関連項目`・`外部リンク`** に統一（wikitext / parse HTML / extract プレーンテキスト）。外部リンク最終見出し時の末尾 navbox 除去は従来どおり。
 - 2026-05-14: **`PersonOut` / `PersonSearchOut` の意味整理**: `has_relations` を **`relation` に主体としての行が存在するか** に変更し、**`is_executed_master`**（`executed_as_master` / `executed_as_master_at`）を追加。フロントの **❸ キャッシュ初回読み・「キャッシュ再取得」** は `has_relations` **および** `is_executed_master`（`isPrincipalRelationsCacheSource`）。❷「相関図に追加」等の主体者実行導線は `is_executed_master` を参照する。
 - 2026-05-14: **`POST /api/v1/person/resolve_wiki_masters`** を追加。Wikipedia 検索結果の各行（記事タイトル → canonical `Person.url`）と **主体者として実行済み**の `person` を一括突合し、❷「相関図に追加」を `GET /person/search` の件数・名前一致に依存させない。
 - 2026-05-14: **❷「相関図に追加」** の表示条件を整理（検索突合のみで主体者実行済みなら未選択でも表示／選択＋関連者1名以上で表示。実装は `usePeopleRelationApp` の `getDiagramPersonIfReadyForWikiRow`）。

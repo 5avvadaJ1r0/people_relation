@@ -9,6 +9,8 @@ from bs4 import BeautifulSoup, Comment, Tag
 from bs4.element import PageElement
 
 from app.services.wiki.parser.encoding_utils import (
+    WIKI_EXTRACT_PLAIN_NOISE_SECTION_HEADINGS,
+    WIKI_L2_LINK_NOISE_SECTION_HEADINGS,
     is_noise_wiki_section_fragment,
     normalize_wiki_link_title,
     title_has_non_main_namespace_prefix,
@@ -55,6 +57,7 @@ def _strip_navboxes_from_soup(soup: BeautifulSoup) -> None:
 
 
 def _should_stop_after_heading_block(node: PageElement) -> bool:
+    """次の level-2 見出し手前まで除去する（navbox は別途一括除去）。"""
     if isinstance(node, Comment):
         return "NewPP limit report" in str(node)
     if not isinstance(node, Tag):
@@ -62,11 +65,6 @@ def _should_stop_after_heading_block(node: PageElement) -> bool:
     if node.name == "div":
         cl = node.get("class") or []
         if "mw-heading" in cl and "mw-heading2" in cl:
-            return True
-        if _class_list_includes_exact_navbox(cl):
-            return True
-    if node.name == "table":
-        if _class_list_includes_exact_navbox(node.get("class")):
             return True
     return False
 
@@ -109,10 +107,10 @@ def strip_catlinks_block(html: str) -> str:
 
 def strip_wiki_noise_sections_from_parsed_html(html: str) -> str:
     soup = BeautifulSoup(html, _HTML_PARSER)
-    for label in ("脚注", "外部リンク"):
+    for label in WIKI_L2_LINK_NOISE_SECTION_HEADINGS:
         for sec in soup.find_all("section", attrs={"aria-labelledby": label}):
             sec.decompose()
-    for sid in ("脚注", "外部リンク"):
+    for sid in WIKI_L2_LINK_NOISE_SECTION_HEADINGS:
         _strip_mw_heading2_block_and_following(soup, sid)
     _strip_navboxes_from_soup(soup)
     cat = soup.find(id="catlinks")
@@ -123,14 +121,13 @@ def strip_wiki_noise_sections_from_parsed_html(html: str) -> str:
 
 def strip_wiki_noise_sections_from_extract_plain(text: str) -> str:
     t = str(text or "")
-    t = re.sub(
-        r"\r?\n脚注\s*\r?\n[\s\S]*?(?=\r?\n(?:注釈|出典|参考文献|外部リンク|関連項目|その他の関連項目)\s*\r?\n|\Z)",
-        "",
-        t,
-    )
-    ext_m = re.search(r"\r?\n外部リンク\s*\r?\n[\s\S]*\Z", t)
-    if ext_m:
-        t = t[: ext_m.start()].rstrip()
+    earliest: int | None = None
+    for heading in WIKI_EXTRACT_PLAIN_NOISE_SECTION_HEADINGS:
+        m = re.search(rf"\r?\n{re.escape(heading)}\s*\r?\n", t)
+        if m is not None and (earliest is None or m.start() < earliest):
+            earliest = m.start()
+    if earliest is not None:
+        t = t[:earliest].rstrip()
     return t.rstrip()
 
 

@@ -11,6 +11,7 @@ import mwparserfromhell as mwp
 
 from app.services.wiki.parser.encoding_utils import (
     is_noise_wiki_section_fragment,
+    is_wiki_l2_link_noise_section_heading,
     normalize_wiki_link_title,
     title_has_non_main_namespace_prefix,
     wiki_internal_path_from_normalized_title,
@@ -23,20 +24,63 @@ class LinkStat:
     href: str
 
 
+# level-2 見出し（`===` と誤マッチしない）
+_L2_HEADING_LINE_RE = re.compile(r"\n==(?!=)\s*([^=\n]+?)\s*==(?!=)\s*\n")
+_EXTERNAL_LINKS_HEADING_RE = re.compile(r"(?:^|\n)==(?!=)\s*外部リンク\s*==(?!=)")
+
+
+def strip_from_external_links_heading_to_eof(wikitext: str) -> str:
+    """``== 外部リンク ==`` が最終 level-2 見出しのとき、末尾（navbox・Category 含む）を丸ごと除去する。"""
+    wt = (wikitext or "").replace("\r\n", "\n")
+    m = _EXTERNAL_LINKS_HEADING_RE.search(wt)
+    if not m:
+        return wt
+    after_heading = wt[m.end() :]
+    if _L2_HEADING_LINE_RE.search(after_heading):
+        return wt
+    return wt[: m.start()].rstrip()
+
+
+def strip_trailing_boilerplate_from_wikitext(wikitext: str) -> str:
+    """記事末尾の navbox テンプレ・Category・Normdaten 等を除去（最終節の末尾に付くもの向け）。"""
+    lines = (wikitext or "").replace("\r\n", "\n").split("\n")
+    while lines:
+        line = lines[-1].strip()
+        if not line:
+            lines.pop()
+            continue
+        if line.startswith("[[Category:") or line.startswith("{{DEFAULTSORT:"):
+            lines.pop()
+            continue
+        if re.match(r"^\{\{[Nn]ormdaten", line):
+            lines.pop()
+            continue
+        if line.startswith("{{") and line.endswith("}}"):
+            lines.pop()
+            continue
+        break
+    return "\n".join(lines)
+
+
+def prepare_wikitext_for_link_extraction(wikitext: str) -> str:
+    """wikitext リンク集計前のノイズ除去（脚注・出典・参考文献・関連項目・外部リンク等）。"""
+    wt = strip_from_external_links_heading_to_eof(wikitext)
+    wt = strip_l2_noise_sections_from_wikitext(wt)
+    return strip_trailing_boilerplate_from_wikitext(wt)
+
+
 def strip_l2_noise_sections_from_wikitext(wikitext: str) -> str:
     wt = (wikitext or "").replace("\r\n", "\n")
     if not wt.strip():
         return wt
-    # level-2 のみ（`===` と誤マッチしないよう `==` の直後が `=` でないことを要求）
-    parts = re.split(r"\n==(?!=)\s*([^=\n]+?)\s*==(?!=)\s*\n", wt)
+    parts = _L2_HEADING_LINE_RE.split(wt)
     if len(parts) == 1:
         return wt
     out: list[str] = [parts[0]]
     for i in range(1, len(parts), 2):
         heading = parts[i].strip()
         body = parts[i + 1] if i + 1 < len(parts) else ""
-        hn = normalize_wiki_link_title(heading)
-        if hn in ("脚注", "外部リンク"):
+        if is_wiki_l2_link_noise_section_heading(heading):
             continue
         out.append(f"\n== {heading} ==\n" + body)
     return "".join(out)
@@ -44,7 +88,7 @@ def strip_l2_noise_sections_from_wikitext(wikitext: str) -> str:
 
 def count_links_from_wikitext(wikitext: str) -> dict[str, LinkStat]:
     raw = str(wikitext or "")
-    cleaned = strip_l2_noise_sections_from_wikitext(raw)
+    cleaned = prepare_wikitext_for_link_extraction(raw)
     try:
         code = mwp.parse(cleaned)
     except Exception:
