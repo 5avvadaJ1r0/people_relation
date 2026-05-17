@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app import crud
 from app.worker.relation_extract import _default_sleep_seconds
 from app.db import SessionLocal
-from app.model import Person
+from app.model import Person, Relation
 from app.schemas import PersonIn, RelationIn
 from app.services.related_search import build_relation_payload_from_extract
 
@@ -99,6 +99,75 @@ def test_pick_random_person_not_executed_as_master() -> None:
         assert picked is not None
         assert picked.executed_as_master is False
         assert picked.url == "https://example.com/not-exec-a"
+    finally:
+        db.close()
+
+
+def test_pick_random_person_prefers_most_relation_involvements() -> None:
+    db: Session = SessionLocal()
+    try:
+        hub = Person(
+            name="ハブ",
+            title="ハブ題",
+            url="https://example.com/hub",
+            executed_as_master=False,
+        )
+        leaf = Person(
+            name="葉",
+            title="葉題",
+            url="https://example.com/leaf",
+            executed_as_master=False,
+        )
+        other = Person(
+            name="他",
+            title="他題",
+            url="https://example.com/other",
+            executed_as_master=False,
+        )
+        db.add_all([hub, leaf, other])
+        db.flush()
+        db.add_all(
+            [
+                Relation(master_person_id=hub.id, slave_person_id=leaf.id, point=1),
+                Relation(master_person_id=hub.id, slave_person_id=other.id, point=1),
+                Relation(master_person_id=leaf.id, slave_person_id=hub.id, point=1),
+            ]
+        )
+        db.commit()
+
+        picked = crud.pick_random_person_not_executed_as_master(db)
+        assert picked is not None
+        assert picked.id == hub.id
+    finally:
+        db.close()
+
+
+def test_pick_random_person_ties_on_same_relation_count() -> None:
+    db: Session = SessionLocal()
+    try:
+        a = Person(
+            name="A",
+            title="A題",
+            url="https://example.com/tie-a",
+            executed_as_master=False,
+        )
+        b = Person(
+            name="B",
+            title="B題",
+            url="https://example.com/tie-b",
+            executed_as_master=False,
+        )
+        db.add_all([a, b])
+        db.flush()
+        db.add(Relation(master_person_id=a.id, slave_person_id=b.id, point=1))
+        db.commit()
+
+        picked_urls: set[str] = set()
+        for _ in range(20):
+            picked = crud.pick_random_person_not_executed_as_master(db)
+            assert picked is not None
+            picked_urls.add(picked.url)
+        assert picked_urls == {a.url, b.url}
     finally:
         db.close()
 
