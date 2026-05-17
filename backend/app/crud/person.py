@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from urllib.parse import quote
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.crud.relation import person_ids_with_forward_relation
@@ -139,6 +139,16 @@ def get_person_by_url(db: Session, *, url: str) -> Person | None:
     """正規化済み URL 相当の `Person.url` で 1 件取得する。"""
     url_n = normalize_url(url)
     return db.scalar(select(Person).where(Person.url == url_n))
+
+
+def pick_random_person_not_executed_as_master(db: Session) -> Person | None:
+    """`executed_as_master` が false の人物をランダムに 1 件返す（該当なしは None）。"""
+    return db.scalar(
+        select(Person)
+        .where(Person.executed_as_master.is_(False))
+        .order_by(func.random())
+        .limit(1)
+    )
 
 
 def mark_executed_as_master_by_url(db: Session, *, url: str) -> Person | None:

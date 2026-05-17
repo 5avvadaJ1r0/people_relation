@@ -1,0 +1,17 @@
+[Unit]
+Description=People Relation FastAPI (gunicorn)
+After=network.target postgresql.service
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/people_relation/backend
+EnvironmentFile=/var/www/people_relation/backend/.env
+ExecStart=/var/www/people_relation/backend/.venv/bin/gunicorn app.main:app \
+  -k uvicorn.workers.UvicornWorker \
+  -b 127.0.0.1:8000 \
+  --workers 4
+Restart=on-failure
+RestartSec=5
+[Install]
+WantedBy=multi-user.target

@@ -76,6 +76,31 @@ services:
     ports:
       - "8080:8080"
 
+  # 画面の「関連者を探す」と同じ処理を、未実行主体の person に対してバックグラウンドで繰り返す
+  relation_extract_worker:
+    build:
+      context: ../backend
+      dockerfile: ../docker/backend/Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required (set it in .env)}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    volumes:
+      - ../backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - python
+      - -m
+      - app.worker.relation_extract
+      - --pid-file
+      - /tmp/relation_extract_worker.pid
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   frontend_node_modules:
