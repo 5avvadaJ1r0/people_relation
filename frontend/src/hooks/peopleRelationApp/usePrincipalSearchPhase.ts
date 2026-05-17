@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { apiSearchPersonExecutedMasters } from "../../lib/api";
 import { trackPrincipalInputPhase1 } from "../../lib/analytics";
-import { isAbortError } from "../../lib/wikiSse";
+import { isAbortError } from "../../lib/isAbortError";
 import type { ApiPerson } from "../../lib/types";
 
 const SUGGEST_DEBOUNCE_MS = 320;
