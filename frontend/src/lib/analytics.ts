@@ -2,8 +2,7 @@
 
 export type PrincipalInputPhase1Payload = {
   query_char_count: number;
-  wiki_result_count: number;
-  server_match_count: number;
+  suggest_match_count: number;
 };
 
 export type RelatedSearchPhase2Payload = {

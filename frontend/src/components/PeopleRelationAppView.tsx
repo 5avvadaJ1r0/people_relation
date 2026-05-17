@@ -4,14 +4,13 @@ import { AppHeader } from "./AppHeader";
 import { MainTabBar } from "./MainTabBar";
 import { PrincipalSearchCard } from "./PrincipalSearchCard";
 import { PrincipalRelationsCard } from "./PrincipalRelationsCard";
-import { BusyOverlay } from "./BusyOverlay";
 
 type PeopleRelationAppViewProps = {
   model: PeopleRelationAppModel;
 };
 
 export const PeopleRelationAppView = ({ model }: PeopleRelationAppViewProps) => {
-  const { nav, appBusy, listSearch, principalDetail, error } = model;
+  const { nav, listSearch, principalDetail, error } = model;
   return (
     <>
       <div
@@ -28,17 +27,8 @@ export const PeopleRelationAppView = ({ model }: PeopleRelationAppViewProps) => 
           hidden={nav.mainTab !== "list"}
         >
           <div className="grid">
-            <PrincipalSearchCard
-              error={error}
-              appBusy={appBusy}
-              listSearch={listSearch}
-            />
+            <PrincipalSearchCard error={error} listSearch={listSearch} />
             <PrincipalRelationsCard
-              busy={appBusy.busy}
-              searchActions={{
-                setQuery: listSearch.setQuery,
-                onSearch: listSearch.onSearch,
-              }}
               principalDetail={principalDetail}
               onAddRelatedPersonToDiagram={nav.onAddRelatedPersonToDiagram}
             />
@@ -58,8 +48,6 @@ export const PeopleRelationAppView = ({ model }: PeopleRelationAppViewProps) => 
           />
         </div>
       </div>
-
-      {appBusy.busy ? <BusyOverlay caption={appBusy.busyOverlayCaption} /> : null}
     </>
   );
 };
