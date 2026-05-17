@@ -1,0 +1,21 @@
+[Unit]
+Description=People Relation - related search background worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=people_relation
+Group=people_relation
+WorkingDirectory=/var/www/people_relation/backend
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/var/www/people_relation/backend/.env
+ExecStart=/var/www/people_relation/backend/.venv/bin/python -m app.worker.relation_extract
+Restart=on-failure
+RestartSec=30
+# 1 件の Wikipedia 抽出が長い場合に備え、停止は SIGTERM で現処理完了後に終了させる
+TimeoutStopSec=600
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

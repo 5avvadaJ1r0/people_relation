@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import random
 from datetime import datetime
 from urllib.parse import quote
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.crud.relation import person_ids_with_forward_relation
@@ -139,6 +140,44 @@ def get_person_by_url(db: Session, *, url: str) -> Person | None:
     """正規化済み URL 相当の `Person.url` で 1 件取得する。"""
     url_n = normalize_url(url)
     return db.scalar(select(Person).where(Person.url == url_n))
+
+
+def pick_random_person_not_executed_as_master(db: Session) -> Person | None:
+    """`executed_as_master` が false の人物をランダムに 1 件返す（該当なしは None）。
+
+    `ORDER BY random()` は候補全件のソートが必要になるため、未実行行の
+    min/max id から乱数を引き、部分インデックスで id 範囲検索する。
+    """
+    min_id, max_id = db.execute(
+        select(func.min(Person.id), func.max(Person.id)).where(
+            Person.executed_as_master.is_(False)
+        )
+    ).one()
+    if min_id is None:
+        return None
+
+    target = random.randint(min_id, max_id)
+    person = db.scalar(
+        select(Person)
+        .where(
+            Person.executed_as_master.is_(False),
+            Person.id >= target,
+        )
+        .order_by(Person.id)
+        .limit(1)
+    )
+    if person is not None:
+        return person
+
+    return db.scalar(
+        select(Person)
+        .where(
+            Person.executed_as_master.is_(False),
+            Person.id < target,
+        )
+        .order_by(Person.id.desc())
+        .limit(1)
+    )
 
 
 def mark_executed_as_master_by_url(db: Session, *, url: str) -> Person | None:

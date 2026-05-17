@@ -53,6 +53,11 @@ CREATE TABLE wiki_human_cache (
 -- person.name の部分一致検索 (search_persons) 用 GIN インデックス。
 CREATE INDEX idx_person_name_trgm ON person USING gin (name gin_trgm_ops);
 
+-- 未実行主体ワーカー (pick_random_person_not_executed_as_master) 用。
+-- executed_as_master = false の id 範囲検索を O(log N) にする。
+CREATE INDEX idx_person_not_executed_master ON person (id)
+  WHERE executed_as_master = false;
+
 -- master_person_id でフィルタしつつ point DESC, id ASC で Top-N を取得するクエリ用。
 -- 単独カラムの idx_relation_master_person_id を兼ねるため、こちらに統合する。
 -- これにより ORDER BY のためのソート処理が不要になり、インデックスだけで Top-N が決まる。

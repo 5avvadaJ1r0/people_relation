@@ -5,7 +5,7 @@
 | ドキュメント | 内容 |
 | --- | --- |
 | [infrastructure.md](./infrastructure.md) | インフラ構成（フロント・バックエンド） |
-| [setup.md](./setup.md) | 開発環境の起動・停止、Gunicorn、CDN 配信 |
+| [setup.md](./setup.md) | 開発環境の起動・停止、Gunicorn、関連者抽出ワーカー（systemd）、CDN 配信 |
 | [architecture.md](./architecture.md) | 処理の全体像、2-hop アルゴリズムの概要 |
 | [api-usage.md](./api-usage.md) | 関係データの保存形式、エンドポイント一覧（概要） |
 | [frontend.md](./frontend.md) | 画面の挙動、相関図タブ、フロントテスト |
