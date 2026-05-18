@@ -31,6 +31,7 @@ export const PeopleRelationAppView = ({ model }: PeopleRelationAppViewProps) => 
             <PrincipalRelationsCard
               principalDetail={principalDetail}
               onAddRelatedPersonToDiagram={nav.onAddRelatedPersonToDiagram}
+              onSelectPrincipal={listSearch.onSelectPerson}
             />
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import type { ApiPerson } from "../lib/types";
 import type { PeopleRelationAppModel } from "../peopleRelationAppModel";
 import { useMainTabAndDiagram } from "./peopleRelationApp/useMainTabAndDiagram";
 import { usePrincipalDetailPhase } from "./peopleRelationApp/usePrincipalDetailPhase";
@@ -37,6 +38,14 @@ export const usePeopleRelationApp = (): PeopleRelationAppModel => {
     [diagramNav.setMainTab, search.queryInputRef, search.setQuery],
   );
 
+  const onSelectPerson = useCallback(
+    async (person: ApiPerson) => {
+      search.setQuery(person.name);
+      await detail.onSelectPerson(person);
+    },
+    [detail.onSelectPerson, search.setQuery],
+  );
+
   return {
     error,
     nav: {
@@ -60,7 +69,7 @@ export const usePeopleRelationApp = (): PeopleRelationAppModel => {
       setHighlightIdx: search.setHighlightIdx,
       clearQuery: search.clearQuery,
       minSuggestQueryLen: search.minSuggestQueryLen,
-      onSelectPerson: detail.onSelectPerson,
+      onSelectPerson,
     },
     principalDetail: {
       detailRef: detail.detailRef,

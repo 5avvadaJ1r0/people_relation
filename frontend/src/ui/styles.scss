@@ -955,12 +955,27 @@ input[type="text"]:focus-visible {
   min-width: 9rem;
   max-width: 9rem;
   text-align: right;
+  vertical-align: middle;
   box-sizing: border-box;
 }
 
+.principalRelationsRelationsTable td:first-child {
+  vertical-align: middle;
+}
+
 @media (max-width: $bp-bs-md-max) {
+  .principalRelationsRelationsTable col.principalRelationsActionsCol {
+    width: 2.25rem;
+  }
+
   .principalRelationsRelationsTable col.principalRelationsScoreCol {
     width: 54px;
+  }
+
+  .principalRelationsRelationsTable .principalRelationsActionsCol {
+    width: 2.25rem;
+    min-width: 2.25rem;
+    max-width: 2.25rem;
   }
 
   .principalRelationsRelationsTable .principalRelationsScoreCol {
@@ -968,6 +983,85 @@ input[type="text"]:focus-visible {
     min-width: 54px;
     max-width: 54px;
   }
+}
+
+.principalRelationsPersonCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 人物名横の Wikipedia / 操作列の相関図アイコンを同じ枠で縦揃え */
+.principalRelationsWikiLink,
+.principalRelationsCard .principalDiagramAddLinkIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  line-height: 0;
+}
+
+.principalRelationsWikiIconSvg {
+  display: block;
+  width: 18px;
+  height: 14px;
+}
+
+.principalRelationsCard .principalDiagramAddLinkIcon {
+  color: #000;
+}
+
+.principalRelationsDiagramIconSvg {
+  display: block;
+  height: 14px;
+  width: auto;
+  /* viewBox 内の図形が上寄りのため、Wikipedia W と視覚的に揃える */
+  transform: translateY(1px);
+}
+
+.principalRelationsWikiLink {
+  color: #000;
+  text-decoration: none;
+  opacity: 0.72;
+}
+
+.principalRelationsWikiLink:hover {
+  opacity: 1;
+}
+
+.principalRelationsWikiLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.principalRelationsPersonSelectLink {
+  padding: 0;
+  border: none;
+  font: inherit;
+  color: var(--accent);
+  text-align: left;
+  text-decoration: underline;
+  background: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.principalRelationsPersonSelectLink:hover {
+  color: #1d4ed8;
+}
+
+.principalRelationsPersonSelectLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.principalRelationsPersonName {
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .principalRelatedRowActions {
@@ -978,9 +1072,11 @@ input[type="text"]:focus-visible {
   gap: 8px;
 }
 
-/* 関連者テーブル「相関図に追加」: 全ブレークポイントでテキストリンク表示 */
+/* 関連者テーブル「相関図に追加」: PC はテキストリンク、SP はアイコンリンク */
 .principalRelationsCard .principalDiagramAddLink {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   border: none;
   font-size: 14px;
@@ -988,6 +1084,14 @@ input[type="text"]:focus-visible {
   color: #777;
   background: none;
   cursor: pointer;
+}
+
+.principalRelationsCard .principalDiagramAddLink .principalDiagramAddLinkIcon {
+  display: none;
+}
+
+.principalRelationsCard .principalDiagramAddLinkLabel {
+  line-height: 1.4;
 }
 
 .principalRelationsCard .principalDiagramAddLink:disabled {
@@ -999,6 +1103,34 @@ input[type="text"]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 2px;
+}
+
+@media (max-width: $bp-bs-md-max) {
+  .principalRelationsCard .principalDiagramAddLink {
+    text-decoration: none;
+    color: #000;
+    opacity: 0.88;
+  }
+
+  .principalRelationsCard .principalDiagramAddLink:hover {
+    opacity: 1;
+  }
+
+  .principalRelationsCard .principalDiagramAddLink .principalDiagramAddLinkIcon {
+    display: inline-flex;
+  }
+
+  .principalRelationsCard .principalDiagramAddLinkLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 
 .principalRelationsTableToolbar {

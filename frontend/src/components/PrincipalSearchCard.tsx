@@ -31,7 +31,6 @@ export const PrincipalSearchCard = ({
   const selectPerson = (idx: number) => {
     const p = matches[idx];
     if (!p) return;
-    setQuery(p.name);
     setHighlightIdx(-1);
     void onSelectPerson(p);
   };

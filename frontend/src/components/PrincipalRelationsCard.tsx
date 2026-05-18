@@ -1,3 +1,5 @@
+import { PrincipalDiagramAddLink } from "./PrincipalDiagramAddLink";
+import { PrincipalRelationPersonCell } from "./PrincipalRelationPersonCell";
 import { isExecutedPrincipalForDiagram } from "../lib/wikiPersonMatch";
 import { WIKI_MAX_RELATED_DISPLAY } from "../wikiDisplayConstants";
 import type { ApiPerson } from "../lib/types";
@@ -6,6 +8,7 @@ import type { PeopleRelationPrincipalDetailModel } from "../peopleRelationAppMod
 type PrincipalRelationsCardProps = {
   principalDetail: PeopleRelationPrincipalDetailModel;
   onAddRelatedPersonToDiagram: (person: ApiPerson) => void;
+  onSelectPrincipal: (person: ApiPerson) => void | Promise<void>;
 };
 
 const PRINCIPAL_RELATIONS_COL_COUNT = 5;
@@ -57,6 +60,7 @@ const PrincipalRelationsScoreSpacerCells = () => (
 export const PrincipalRelationsCard = ({
   principalDetail,
   onAddRelatedPersonToDiagram,
+  onSelectPrincipal,
 }: PrincipalRelationsCardProps) => {
   const {
     detailRef,
@@ -112,26 +116,21 @@ export const PrincipalRelationsCard = ({
             <tbody>
               <tr className="principalRelationsMasterRow">
                 <td>
-                  <a
-                    href={selected.serverPerson.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {masterLabel || selected.serverPerson.title}
-                  </a>
+                  <PrincipalRelationPersonCell
+                    displayName={masterLabel || selected.serverPerson.title}
+                    url={selected.serverPerson.url}
+                    person={selected.serverPerson}
+                    onSelectPrincipal={onSelectPrincipal}
+                  />
                 </td>
                 <td className="principalRelationsActionsCol">
                   <span className="principalRelatedRowActions">
                     {isExecutedPrincipalForDiagram(selected.serverPerson) ? (
-                      <button
-                        type="button"
-                        className="principalDiagramAddLink"
+                      <PrincipalDiagramAddLink
                         onClick={() =>
                           onAddRelatedPersonToDiagram(selected.serverPerson)
                         }
-                      >
-                        相関図に追加
-                      </button>
+                      />
                     ) : null}
                   </span>
                 </td>
@@ -166,24 +165,19 @@ export const PrincipalRelationsCard = ({
                         key={`${r.slave.url}-${r.totalPoint}-${r.forwardPoint}`}
                       >
                         <td>
-                          <a
-                            href={r.slave.url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {r.slave.name}
-                          </a>
+                          <PrincipalRelationPersonCell
+                            displayName={r.slave.name}
+                            url={r.slave.url}
+                            person={sp}
+                            onSelectPrincipal={onSelectPrincipal}
+                          />
                         </td>
                         <td className="principalRelationsActionsCol">
                           <span className="principalRelatedRowActions">
                             {canAddSlaveToDiagram ? (
-                              <button
-                                type="button"
-                                className="principalDiagramAddLink"
+                              <PrincipalDiagramAddLink
                                 onClick={() => onAddRelatedPersonToDiagram(sp)}
-                              >
-                                相関図に追加
-                              </button>
+                              />
                             ) : null}
                           </span>
                         </td>
