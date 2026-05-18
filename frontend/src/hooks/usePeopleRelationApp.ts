@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type { ApiPerson } from "../lib/types";
 import type { PeopleRelationAppModel } from "../peopleRelationAppModel";
 import { useMainTabAndDiagram } from "./peopleRelationApp/useMainTabAndDiagram";
 import { usePrincipalDetailPhase } from "./peopleRelationApp/usePrincipalDetailPhase";
@@ -26,6 +27,11 @@ export const usePeopleRelationApp = (): PeopleRelationAppModel => {
 
   const diagramNav = useMainTabAndDiagram();
 
+  const diagramCenterPersonIds = useMemo(
+    () => new Set(diagramNav.diagramCenter.map((p) => p.id)),
+    [diagramNav.diagramCenter],
+  );
+
   const onOpenListTabWithPrincipalQuery = useCallback(
     (q: string) => {
       search.setQuery(q);
@@ -37,14 +43,25 @@ export const usePeopleRelationApp = (): PeopleRelationAppModel => {
     [diagramNav.setMainTab, search.queryInputRef, search.setQuery],
   );
 
+  const onSelectPerson = useCallback(
+    async (person: ApiPerson) => {
+      search.setQuery(person.name);
+      await detail.onSelectPerson(person);
+    },
+    [detail.onSelectPerson, search.setQuery],
+  );
+
   return {
     error,
     nav: {
       mainTab: diagramNav.mainTab,
       setMainTab: diagramNav.setMainTab,
-      diagramQueueCenterPerson: diagramNav.diagramQueueCenterPerson,
-      onDiagramQueueCenterPersonApplied: diagramNav.onDiagramQueueCenterPersonApplied,
-      onAddRelatedPersonToDiagram: diagramNav.queueCenterPersonIfExecutedMaster,
+      diagramCenter: diagramNav.diagramCenter,
+      setDiagramCenter: diagramNav.setDiagramCenter,
+      diagramCenterPersonIds,
+      onAddRelatedPersonToDiagram: diagramNav.addCenterPersonIfExecutedMaster,
+      onAddRelatedPersonsToDiagram: diagramNav.addCenterPersonsIfExecutedMasters,
+      onRemoveRelatedPersonFromDiagram: diagramNav.removeCenterPerson,
       onOpenListTabWithPrincipalQuery,
     },
     listSearch: {
@@ -60,7 +77,7 @@ export const usePeopleRelationApp = (): PeopleRelationAppModel => {
       setHighlightIdx: search.setHighlightIdx,
       clearQuery: search.clearQuery,
       minSuggestQueryLen: search.minSuggestQueryLen,
-      onSelectPerson: detail.onSelectPerson,
+      onSelectPerson,
     },
     principalDetail: {
       detailRef: detail.detailRef,

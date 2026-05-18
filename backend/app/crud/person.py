@@ -4,7 +4,7 @@ import random
 from datetime import datetime
 from urllib.parse import quote
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.crud.relation import person_ids_with_forward_relation
@@ -79,6 +79,11 @@ def upsert_person(db: Session, *, name: str, url: str, title: str | None) -> Per
     return person
 
 
+def person_executed_as_master_predicate():
+    """主体者として実行済み（`person.executed_as_master` が true）の SQL 条件。"""
+    return Person.executed_as_master.is_(True)
+
+
 def list_persons_executed_masters_by_urls(
     db: Session, *, urls: list[str]
 ) -> dict[str, Person]:
@@ -90,10 +95,7 @@ def list_persons_executed_masters_by_urls(
     rows = db.scalars(
         select(Person).where(
             Person.url.in_(uniq),
-            or_(
-                Person.executed_as_master.is_(True),
-                Person.executed_as_master_at.isnot(None),
-            ),
+            person_executed_as_master_predicate(),
         )
     ).all()
     return {normalize_url(p.url): p for p in rows}
@@ -106,7 +108,7 @@ def search_persons_executed_as_master(
     return list(
         db.scalars(
             select(Person)
-            .where(Person.name.ilike(q), Person.executed_as_master.is_(True))
+            .where(Person.name.ilike(q), person_executed_as_master_predicate())
             .limit(limit)
         ).all()
     )
@@ -125,9 +127,7 @@ def search_persons(
     out: list[tuple[Person, bool, bool]] = []
     for p in persons:
         has_rows = p.id in with_fwd
-        executed = getattr(p, "executed_as_master_at", None) is not None or bool(
-            getattr(p, "executed_as_master", False)
-        )
+        executed = bool(getattr(p, "executed_as_master", False))
         out.append((p, has_rows, executed))
     return out
 

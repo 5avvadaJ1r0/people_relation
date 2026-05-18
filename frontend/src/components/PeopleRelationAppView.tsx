@@ -30,7 +30,13 @@ export const PeopleRelationAppView = ({ model }: PeopleRelationAppViewProps) => 
             <PrincipalSearchCard error={error} listSearch={listSearch} />
             <PrincipalRelationsCard
               principalDetail={principalDetail}
+              diagramCenterPersonIds={nav.diagramCenterPersonIds}
               onAddRelatedPersonToDiagram={nav.onAddRelatedPersonToDiagram}
+              onAddRelatedPersonsToDiagram={nav.onAddRelatedPersonsToDiagram}
+              onRemoveRelatedPersonFromDiagram={
+                nav.onRemoveRelatedPersonFromDiagram
+              }
+              onSelectPrincipal={listSearch.onSelectPerson}
             />
           </div>
         </div>
@@ -42,8 +48,8 @@ export const PeopleRelationAppView = ({ model }: PeopleRelationAppViewProps) => 
           hidden={nav.mainTab !== "diagram"}
         >
           <DiagramTabPanel
-            queueCenterPerson={nav.diagramQueueCenterPerson}
-            onQueueCenterPersonApplied={nav.onDiagramQueueCenterPersonApplied}
+            center={nav.diagramCenter}
+            setCenter={nav.setDiagramCenter}
             onOpenListTabWithPrincipalQuery={nav.onOpenListTabWithPrincipalQuery}
           />
         </div>

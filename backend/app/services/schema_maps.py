@@ -10,7 +10,7 @@ from app.schemas import (
 
 
 def _is_executed_master_from_person(person: Person) -> bool:
-    return person.executed_as_master_at is not None or bool(person.executed_as_master)
+    return bool(person.executed_as_master)
 
 
 def person_to_out(

@@ -39,9 +39,12 @@ export type PeopleRelationPrincipalDetailModel = {
 export type PeopleRelationNavModel = {
   mainTab: MainAppTab;
   setMainTab: Dispatch<SetStateAction<MainAppTab>>;
-  diagramQueueCenterPerson: { person: ApiPerson; requestId: number } | null;
-  onDiagramQueueCenterPersonApplied: () => void;
+  diagramCenter: ApiPerson[];
+  setDiagramCenter: Dispatch<SetStateAction<ApiPerson[]>>;
+  diagramCenterPersonIds: ReadonlySet<number>;
   onAddRelatedPersonToDiagram: (person: ApiPerson) => void;
+  onAddRelatedPersonsToDiagram: (persons: ApiPerson[]) => void;
+  onRemoveRelatedPersonFromDiagram: (personId: number) => void;
   /** 相関図タブから「関連者リストアップ」タブへ切替え、主体者入力欄に `query` を反映する */
   onOpenListTabWithPrincipalQuery: (query: string) => void;
 };

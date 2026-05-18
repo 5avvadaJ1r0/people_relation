@@ -133,6 +133,48 @@ def test_diagram_core_network_validation_total_point_gt_negative(
     assert r.status_code == 422
 
 
+def test_person_search_executed_masters_excludes_at_only(
+    client: TestClient,
+) -> None:
+    """`executed_as_master_at` のみの行は無効（`executed_as_master` を優先）。"""
+    from datetime import datetime
+
+    from app.db import SessionLocal
+    from app.model import Person
+
+    url = "https://example.com/exem-at-only-master"
+    db = SessionLocal()
+    try:
+        db.add(
+            Person(
+                name="佐藤未実行扱い",
+                title="佐藤未実行扱い",
+                url=url,
+                executed_as_master=False,
+                executed_as_master_at=datetime(2026, 5, 17, 8, 0, 0),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    r_search = client.get(
+        "/api/v1/person/search_executed_masters",
+        params={"name": "佐藤未実行"},
+    )
+    assert r_search.status_code == 200
+    assert r_search.json() == []
+
+    r_person = client.get(
+        "/api/v1/person/search",
+        params={"name": "佐藤未実行"},
+    )
+    assert r_person.status_code == 200
+    row = next(x for x in r_person.json() if x["url"] == url)
+    assert row["is_executed_master"] is False
+    assert row["executed_as_master_at"] is not None
+
+
 def test_person_search_executed_masters_finds_master_not_slave(
     client: TestClient,
 ) -> None:
