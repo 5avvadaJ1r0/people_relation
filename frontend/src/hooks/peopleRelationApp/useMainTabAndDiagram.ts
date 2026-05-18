@@ -5,31 +5,38 @@ import { isExecutedPrincipalForDiagram } from "../../lib/wikiPersonMatch";
 
 export const useMainTabAndDiagram = () => {
   const [mainTab, setMainTab] = useState<MainAppTab>("list");
-  const [diagramQueueCenterPerson, setDiagramQueueCenterPerson] = useState<{
-    person: ApiPerson;
+  const [diagramQueueCenterPersons, setDiagramQueueCenterPersons] = useState<{
+    persons: ApiPerson[];
     requestId: number;
   } | null>(null);
-  const onDiagramQueueCenterPersonApplied = useCallback(() => {
-    setDiagramQueueCenterPerson(null);
+  const onDiagramQueueCenterPersonsApplied = useCallback(() => {
+    setDiagramQueueCenterPersons(null);
+  }, []);
+
+  const queueCenterPersonsIfExecutedMasters = useCallback((persons: ApiPerson[]) => {
+    const valid = persons.filter((p) => isExecutedPrincipalForDiagram(p));
+    if (valid.length === 0) return;
+    setDiagramQueueCenterPersons({
+      persons: valid,
+      requestId: Date.now(),
+    });
+    setMainTab("diagram");
   }, []);
 
   const queueCenterPersonIfExecutedMaster = useCallback(
     (person: ApiPerson | undefined | null) => {
-      if (!person || !isExecutedPrincipalForDiagram(person)) return;
-      setDiagramQueueCenterPerson({
-        person,
-        requestId: Date.now(),
-      });
-      setMainTab("diagram");
+      if (!person) return;
+      queueCenterPersonsIfExecutedMasters([person]);
     },
-    [],
+    [queueCenterPersonsIfExecutedMasters],
   );
 
   return {
     mainTab,
     setMainTab,
-    diagramQueueCenterPerson,
-    onDiagramQueueCenterPersonApplied,
+    diagramQueueCenterPersons,
+    onDiagramQueueCenterPersonsApplied,
     queueCenterPersonIfExecutedMaster,
+    queueCenterPersonsIfExecutedMasters,
   };
 };

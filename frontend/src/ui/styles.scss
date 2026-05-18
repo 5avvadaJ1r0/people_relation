@@ -1072,6 +1072,61 @@ input[type="text"]:focus-visible {
   gap: 8px;
 }
 
+.principalDiagramAddLinkRow {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.principalDiagramAddCheckboxLabel {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.principalDiagramAddCheckboxLabel input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.principalRelationsBulkDiagramAdd {
+  margin: 0 0 12px;
+}
+
+.principalRelationsBulkDiagramAddLink {
+  padding: 0;
+  border: none;
+  font: inherit;
+  font-size: 14px;
+  text-decoration: underline;
+  color: var(--accent);
+  background: none;
+  cursor: pointer;
+}
+
+.principalRelationsBulkDiagramAddLink:hover:not(:disabled) {
+  color: #1d4ed8;
+}
+
+.principalRelationsBulkDiagramAddLink:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  text-decoration: none;
+  opacity: 0.65;
+}
+
+.principalRelationsBulkDiagramAddLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 /* 関連者テーブル「相関図に追加」: PC はテキストリンク、SP はアイコンリンク */
 .principalRelationsCard .principalDiagramAddLink {
   display: inline-flex;

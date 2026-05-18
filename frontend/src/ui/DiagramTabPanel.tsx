@@ -89,16 +89,16 @@ const IconArrowUpFromBracket = () => (
 );
 
 export type DiagramTabPanelProps = {
-  /** 関連者リスト側から中心人物を追加するときに渡す（`requestId` は同一人物の再追加でも発火させるための nonce） */
-  queueCenterPerson?: { person: ApiPerson; requestId: number } | null;
-  onQueueCenterPersonApplied?: () => void;
+  /** 関連者リスト側から中心人物を追加するときに渡す（`requestId` は同一操作の再実行でも発火させるための nonce） */
+  queueCenterPersons?: { persons: ApiPerson[]; requestId: number } | null;
+  onQueueCenterPersonsApplied?: () => void;
   /** サジェスト空時の案内から「関連者リストアップ」タブへ切替え、主体者入力に相関図タブの入力文字列を渡す */
   onOpenListTabWithPrincipalQuery?: (query: string) => void;
 };
 
 export const DiagramTabPanel = ({
-  queueCenterPerson = null,
-  onQueueCenterPersonApplied,
+  queueCenterPersons = null,
+  onQueueCenterPersonsApplied,
   onOpenListTabWithPrincipalQuery,
 }: DiagramTabPanelProps) => {
   const [query, setQuery] = useState("");
@@ -197,19 +197,23 @@ export const DiagramTabPanel = ({
   };
 
   useEffect(() => {
-    if (!queueCenterPerson) return;
-    const { person } = queueCenterPerson;
+    if (!queueCenterPersons) return;
+    const { persons } = queueCenterPersons;
     setCenter((prev) => {
-      if (prev.some((c) => c.id === person.id)) return prev;
-      if (prev.length >= MAX_DIAGRAM_CENTER) return prev;
-      return [...prev, person];
+      let next = prev;
+      for (const person of persons) {
+        if (next.some((c) => c.id === person.id)) continue;
+        if (next.length >= MAX_DIAGRAM_CENTER) break;
+        next = [...next, person];
+      }
+      return next.length === prev.length ? prev : next;
     });
     setQuery("");
     setMatches([]);
     setSuggestFetched(false);
     setHighlightIdx(-1);
-    onQueueCenterPersonApplied?.();
-  }, [queueCenterPerson, onQueueCenterPersonApplied]);
+    onQueueCenterPersonsApplied?.();
+  }, [queueCenterPersons, onQueueCenterPersonsApplied]);
 
   const removeCenter = (id: number) => {
     setCenter((prev) => prev.filter((c) => c.id !== id));

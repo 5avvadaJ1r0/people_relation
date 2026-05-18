@@ -51,9 +51,10 @@ export const usePeopleRelationApp = (): PeopleRelationAppModel => {
     nav: {
       mainTab: diagramNav.mainTab,
       setMainTab: diagramNav.setMainTab,
-      diagramQueueCenterPerson: diagramNav.diagramQueueCenterPerson,
-      onDiagramQueueCenterPersonApplied: diagramNav.onDiagramQueueCenterPersonApplied,
+      diagramQueueCenterPersons: diagramNav.diagramQueueCenterPersons,
+      onDiagramQueueCenterPersonsApplied: diagramNav.onDiagramQueueCenterPersonsApplied,
       onAddRelatedPersonToDiagram: diagramNav.queueCenterPersonIfExecutedMaster,
+      onAddRelatedPersonsToDiagram: diagramNav.queueCenterPersonsIfExecutedMasters,
       onOpenListTabWithPrincipalQuery,
     },
     listSearch: {

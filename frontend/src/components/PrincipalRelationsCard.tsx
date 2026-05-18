@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PrincipalDiagramAddLink } from "./PrincipalDiagramAddLink";
 import { PrincipalRelationPersonCell } from "./PrincipalRelationPersonCell";
 import { isExecutedPrincipalForDiagram } from "../lib/wikiPersonMatch";
@@ -8,6 +9,7 @@ import type { PeopleRelationPrincipalDetailModel } from "../peopleRelationAppMod
 type PrincipalRelationsCardProps = {
   principalDetail: PeopleRelationPrincipalDetailModel;
   onAddRelatedPersonToDiagram: (person: ApiPerson) => void;
+  onAddRelatedPersonsToDiagram: (persons: ApiPerson[]) => void;
   onSelectPrincipal: (person: ApiPerson) => void | Promise<void>;
 };
 
@@ -60,6 +62,7 @@ const PrincipalRelationsScoreSpacerCells = () => (
 export const PrincipalRelationsCard = ({
   principalDetail,
   onAddRelatedPersonToDiagram,
+  onAddRelatedPersonsToDiagram,
   onSelectPrincipal,
 }: PrincipalRelationsCardProps) => {
   const {
@@ -73,6 +76,67 @@ export const PrincipalRelationsCard = ({
     relations,
     resetDetail,
   } = principalDetail;
+
+  const [diagramAddCheckedIds, setDiagramAddCheckedIds] = useState<Set<number>>(
+    () => new Set(),
+  );
+
+  const selectedPrincipalId = selected?.serverPerson.id ?? null;
+
+  useEffect(() => {
+    setDiagramAddCheckedIds(new Set());
+  }, [selectedPrincipalId]);
+
+  const toggleDiagramAddCheck = useCallback((personId: number, checked: boolean) => {
+    setDiagramAddCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(personId);
+      else next.delete(personId);
+      return next;
+    });
+  }, []);
+
+  const collectCheckedAddablePersons = useCallback((): ApiPerson[] => {
+    if (!selected) return [];
+    const persons: ApiPerson[] = [];
+    const master = selected.serverPerson;
+    if (
+      isExecutedPrincipalForDiagram(master) &&
+      diagramAddCheckedIds.has(master.id)
+    ) {
+      persons.push(master);
+    }
+    for (const r of displayRelations) {
+      const sp = r.slavePerson;
+      if (
+        sp != null &&
+        isExecutedPrincipalForDiagram(sp) &&
+        diagramAddCheckedIds.has(sp.id)
+      ) {
+        persons.push(sp);
+      }
+    }
+    return persons;
+  }, [diagramAddCheckedIds, displayRelations, selected]);
+
+  const checkedAddableCount = useMemo(
+    () => collectCheckedAddablePersons().length,
+    [collectCheckedAddablePersons],
+  );
+
+  const hasAnyDiagramAddablePerson = useMemo(() => {
+    if (!selected) return false;
+    if (isExecutedPrincipalForDiagram(selected.serverPerson)) return true;
+    return displayRelations.some(
+      (r) => r.slavePerson != null && isExecutedPrincipalForDiagram(r.slavePerson),
+    );
+  }, [displayRelations, selected]);
+
+  const handleBulkAddToDiagram = () => {
+    const persons = collectCheckedAddablePersons();
+    if (persons.length === 0) return;
+    onAddRelatedPersonsToDiagram(persons);
+  };
 
   const showRelatedRows = relations.length > 0 && displayRelations.length > 0;
 
@@ -102,6 +166,18 @@ export const PrincipalRelationsCard = ({
           （最大上位{WIKI_MAX_RELATED_DISPLAY}名のみ表示）
         </span>
       </h2>
+      {selected && hasAnyDiagramAddablePerson ? (
+        <p className="principalRelationsBulkDiagramAdd">
+          <button
+            type="button"
+            className="principalRelationsBulkDiagramAddLink"
+            disabled={checkedAddableCount === 0}
+            onClick={handleBulkAddToDiagram}
+          >
+            チェックした人物をまとめて相関図に追加
+          </button>
+        </p>
+      ) : null}
       {selected ? (
         <>
           <table className="table principalRelationsRelationsTable">
@@ -127,6 +203,11 @@ export const PrincipalRelationsCard = ({
                   <span className="principalRelatedRowActions">
                     {isExecutedPrincipalForDiagram(selected.serverPerson) ? (
                       <PrincipalDiagramAddLink
+                        personName={masterLabel || selected.serverPerson.title}
+                        checked={diagramAddCheckedIds.has(selected.serverPerson.id)}
+                        onCheckedChange={(checked) =>
+                          toggleDiagramAddCheck(selected.serverPerson.id, checked)
+                        }
                         onClick={() =>
                           onAddRelatedPersonToDiagram(selected.serverPerson)
                         }
@@ -176,6 +257,11 @@ export const PrincipalRelationsCard = ({
                           <span className="principalRelatedRowActions">
                             {canAddSlaveToDiagram ? (
                               <PrincipalDiagramAddLink
+                                personName={r.slave.name}
+                                checked={diagramAddCheckedIds.has(sp.id)}
+                                onCheckedChange={(checked) =>
+                                  toggleDiagramAddCheck(sp.id, checked)
+                                }
                                 onClick={() => onAddRelatedPersonToDiagram(sp)}
                               />
                             ) : null}

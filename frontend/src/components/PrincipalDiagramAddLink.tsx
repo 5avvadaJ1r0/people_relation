@@ -26,19 +26,37 @@ const IconDiagramProjectRegular = () => (
 
 type PrincipalDiagramAddLinkProps = {
   onClick: () => void;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  personName: string;
 };
 
-export const PrincipalDiagramAddLink = ({ onClick }: PrincipalDiagramAddLinkProps) => (
-  <button
-    type="button"
-    className="principalDiagramAddLink"
-    aria-label="相関図に追加"
-    title="相関図に追加"
-    onClick={onClick}
-  >
-    <span className="principalDiagramAddLinkIcon" aria-hidden="true">
-      <IconDiagramProjectRegular />
-    </span>
-    <span className="principalDiagramAddLinkLabel">相関図に追加</span>
-  </button>
+export const PrincipalDiagramAddLink = ({
+  onClick,
+  checked,
+  onCheckedChange,
+  personName,
+}: PrincipalDiagramAddLinkProps) => (
+  <span className="principalDiagramAddLinkRow">
+    <button
+      type="button"
+      className="principalDiagramAddLink"
+      aria-label="相関図に追加"
+      title="相関図に追加"
+      onClick={onClick}
+    >
+      <span className="principalDiagramAddLinkIcon" aria-hidden="true">
+        <IconDiagramProjectRegular />
+      </span>
+      <span className="principalDiagramAddLinkLabel">相関図に追加</span>
+    </button>
+    <label className="principalDiagramAddCheckboxLabel">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onCheckedChange(e.target.checked)}
+        aria-label={`${personName}をまとめて相関図に追加の対象にする`}
+      />
+    </label>
+  </span>
 );
