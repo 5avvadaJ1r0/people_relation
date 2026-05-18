@@ -920,7 +920,20 @@ input[type="text"]:focus-visible {
   }
 }
 
-/* ❸ 関連者表: 主体値・関連値・合計値列（768px 未満は 54px、以上は 72px） */
+/* ❸ 主体者・関連者表: 列幅を固定し「相関図に追加」列を揃える */
+.principalRelationsRelationsTable {
+  table-layout: fixed;
+}
+
+.principalRelationsRelationsTable col.principalRelationsActionsCol {
+  width: 9rem;
+}
+
+.principalRelationsRelationsTable col.principalRelationsScoreCol {
+  width: 72px;
+}
+
+/* 主体値・関連値・合計値列（768px 未満は 54px、以上は 72px） */
 .principalRelationsRelationsTable .principalRelationsScoreCol {
   width: 72px;
   min-width: 72px;
@@ -931,11 +944,25 @@ input[type="text"]:focus-visible {
   padding: 0;
 }
 
+.principalRelationsRelationsTable .principalRelationsScoreColSpacer,
+.principalRelationsRelationsTable .principalRelationsScoreColEmpty {
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+}
+
 .principalRelationsRelationsTable .principalRelationsActionsCol {
+  width: 9rem;
+  min-width: 9rem;
+  max-width: 9rem;
   text-align: right;
+  box-sizing: border-box;
 }
 
 @media (max-width: $bp-bs-md-max) {
+  .principalRelationsRelationsTable col.principalRelationsScoreCol {
+    width: 54px;
+  }
+
   .principalRelationsRelationsTable .principalRelationsScoreCol {
     width: 54px;
     min-width: 54px;
@@ -972,6 +999,30 @@ input[type="text"]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 2px;
+}
+
+.principalRelationsTableToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin: 8px 0 10px;
+}
+
+.principalRelationsTableToolbarEmbedded {
+  margin: 0;
+}
+
+.principalRelationsToolbarRow:hover td {
+  background: transparent;
+}
+
+.principalRelationsMasterUpdated {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.45;
 }
 
 .pill {
