@@ -35,7 +35,7 @@ def person_search_executed_masters(
     name: str = Query(min_length=1),
     db: Session = Depends(get_db),
 ) -> list[PersonSearchOut]:
-    """executed_as_master が true の人物のみを検索する（相関図の中心人物選定用）。"""
+    """主体者として実行済みの人物のみを検索する（❶ サジェスト・相関図の中心人物選定用）。"""
     return search_persons_executed_as_master_only(db, name)
 
 

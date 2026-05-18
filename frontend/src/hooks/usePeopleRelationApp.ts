@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ApiPerson } from "../lib/types";
 import type { PeopleRelationAppModel } from "../peopleRelationAppModel";
 import { useMainTabAndDiagram } from "./peopleRelationApp/useMainTabAndDiagram";
@@ -27,6 +27,11 @@ export const usePeopleRelationApp = (): PeopleRelationAppModel => {
 
   const diagramNav = useMainTabAndDiagram();
 
+  const diagramCenterPersonIds = useMemo(
+    () => new Set(diagramNav.diagramCenter.map((p) => p.id)),
+    [diagramNav.diagramCenter],
+  );
+
   const onOpenListTabWithPrincipalQuery = useCallback(
     (q: string) => {
       search.setQuery(q);
@@ -51,10 +56,12 @@ export const usePeopleRelationApp = (): PeopleRelationAppModel => {
     nav: {
       mainTab: diagramNav.mainTab,
       setMainTab: diagramNav.setMainTab,
-      diagramQueueCenterPersons: diagramNav.diagramQueueCenterPersons,
-      onDiagramQueueCenterPersonsApplied: diagramNav.onDiagramQueueCenterPersonsApplied,
-      onAddRelatedPersonToDiagram: diagramNav.queueCenterPersonIfExecutedMaster,
-      onAddRelatedPersonsToDiagram: diagramNav.queueCenterPersonsIfExecutedMasters,
+      diagramCenter: diagramNav.diagramCenter,
+      setDiagramCenter: diagramNav.setDiagramCenter,
+      diagramCenterPersonIds,
+      onAddRelatedPersonToDiagram: diagramNav.addCenterPersonIfExecutedMaster,
+      onAddRelatedPersonsToDiagram: diagramNav.addCenterPersonsIfExecutedMasters,
+      onRemoveRelatedPersonFromDiagram: diagramNav.removeCenterPerson,
       onOpenListTabWithPrincipalQuery,
     },
     listSearch: {

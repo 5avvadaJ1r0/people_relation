@@ -8,8 +8,10 @@ import type { PeopleRelationPrincipalDetailModel } from "../peopleRelationAppMod
 
 type PrincipalRelationsCardProps = {
   principalDetail: PeopleRelationPrincipalDetailModel;
+  diagramCenterPersonIds: ReadonlySet<number>;
   onAddRelatedPersonToDiagram: (person: ApiPerson) => void;
   onAddRelatedPersonsToDiagram: (persons: ApiPerson[]) => void;
+  onRemoveRelatedPersonFromDiagram: (personId: number) => void;
   onSelectPrincipal: (person: ApiPerson) => void | Promise<void>;
 };
 
@@ -61,8 +63,10 @@ const PrincipalRelationsScoreSpacerCells = () => (
 
 export const PrincipalRelationsCard = ({
   principalDetail,
+  diagramCenterPersonIds,
   onAddRelatedPersonToDiagram,
   onAddRelatedPersonsToDiagram,
+  onRemoveRelatedPersonFromDiagram,
   onSelectPrincipal,
 }: PrincipalRelationsCardProps) => {
   const {
@@ -87,14 +91,24 @@ export const PrincipalRelationsCard = ({
     setDiagramAddCheckedIds(new Set());
   }, [selectedPrincipalId]);
 
-  const toggleDiagramAddCheck = useCallback((personId: number, checked: boolean) => {
-    setDiagramAddCheckedIds((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(personId);
-      else next.delete(personId);
-      return next;
-    });
-  }, []);
+  const isDiagramAddChecked = useCallback(
+    (personId: number) =>
+      diagramAddCheckedIds.has(personId) || diagramCenterPersonIds.has(personId),
+    [diagramAddCheckedIds, diagramCenterPersonIds],
+  );
+
+  const toggleDiagramAddCheck = useCallback(
+    (personId: number, checked: boolean) => {
+      setDiagramAddCheckedIds((prev) => {
+        const next = new Set(prev);
+        if (checked) next.add(personId);
+        else next.delete(personId);
+        return next;
+      });
+      if (!checked) onRemoveRelatedPersonFromDiagram(personId);
+    },
+    [onRemoveRelatedPersonFromDiagram],
+  );
 
   const collectCheckedAddablePersons = useCallback((): ApiPerson[] => {
     if (!selected) return [];
@@ -205,7 +219,7 @@ export const PrincipalRelationsCard = ({
                     {isExecutedPrincipalForDiagram(selected.serverPerson) ? (
                       <PrincipalDiagramAddLink
                         personName={masterLabel || selected.serverPerson.title}
-                        checked={diagramAddCheckedIds.has(selected.serverPerson.id)}
+                        checked={isDiagramAddChecked(selected.serverPerson.id)}
                         onCheckedChange={(checked) =>
                           toggleDiagramAddCheck(selected.serverPerson.id, checked)
                         }
@@ -259,7 +273,7 @@ export const PrincipalRelationsCard = ({
                             {canAddSlaveToDiagram ? (
                               <PrincipalDiagramAddLink
                                 personName={r.slave.name}
-                                checked={diagramAddCheckedIds.has(sp.id)}
+                                checked={isDiagramAddChecked(sp.id)}
                                 onCheckedChange={(checked) =>
                                   toggleDiagramAddCheck(sp.id, checked)
                                 }

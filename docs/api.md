@@ -96,7 +96,7 @@ FastAPI標準のエラー応答を返します。
 | title | string  | yes   | Wikipedia上のページ表示名                        |
 | url   | string  | yes   | WikipediaページURL                         |
 | has_relations | boolean | yes | `relation` に当該人物が **主体（`master_person_id`）** として少なくとも 1 行あるとき true |
-| is_executed_master | boolean | yes | `executed_as_master_at` が非 null、または `executed_as_master` が true のとき true（主体者として関係保存フローを実行したフラグ） |
+| is_executed_master | boolean | yes | `person.executed_as_master` が true のとき true（`executed_as_master_at` のみでは true にしない） |
 | executed_as_master_at | string (ISO 8601) | null可 | 主体者として関係保存を実行した日時（`person.executed_as_master_at`）。未実行なら null |
 
 
@@ -154,7 +154,7 @@ FastAPI標準のエラー応答を返します。
 | title         | string  | yes | 表示名             |
 | url           | string  | yes | WikipediaページURL |
 | has_relations | boolean | yes | `relation` に当該人物が **主体（`master_person_id`）** として少なくとも 1 行あるとき true |
-| is_executed_master | boolean | yes | `executed_as_master_at` が非 null、または `executed_as_master` が true のとき true |
+| is_executed_master | boolean | yes | `person.executed_as_master` が true のとき true（`executed_as_master_at` のみでは true にしない） |
 | executed_as_master_at | string (ISO 8601) | null可 | 主体者として実行した日時（未実行なら null） |
 
 
@@ -313,7 +313,7 @@ sequenceDiagram
 ]
 ```
 
-`has_relations` は **主体としての `relation` 行の有無**。`is_executed_master` は **主体者としての実行フラグ**（`executed_as_master` / `executed_as_master_at`）。`executed_as_master_at` は主体者として関係保存を実行した日時（未設定は `null`）。`POST` 直後に主体が更新された場合のみ値が入ることが多い。
+`has_relations` は **主体としての `relation` 行の有無**。`is_executed_master` は **`person.executed_as_master` が true かどうか**（`executed_as_master_at` だけでは true にしない）。`executed_as_master_at` は主体者として関係保存を実行した日時の記録（未設定は `null`）。`POST` 直後に主体が更新された場合のみ値が入ることが多い。
 
 #### エラー
 
@@ -420,7 +420,7 @@ sequenceDiagram
 
 `GET /api/v1/person/search_executed_masters?name=...`
 
-- **用途**: `person.executed_as_master = true` の人物のみを、`/person/search` と同様の **名前部分一致**で検索する（相関図タブで中心人物を選ぶ用途）。
+- **用途**: **`person.executed_as_master = true`** の人物のみを、`/person/search` と同様の **名前部分一致**で検索する（❶ 主体者入力のサジェスト・相関図タブの中心人物選定用）。
 - **クエリ**
   - `name` (string, 必須, min_length=1)
 - **上限**: 20件
@@ -438,7 +438,7 @@ sequenceDiagram
 
 `POST /api/v1/person/resolve_wiki_masters`
 
-- **用途**: ❷ 主体者検索結果（Wikipedia の各行）ごとに、記事タイトルから組み立てた **ja.wikipedia の canonical `Person.url`** と一致し、かつ **主体者として実行済み**（`executed_as_master` または `executed_as_master_at`）の人物を返す。`GET /person/search` の 20 件上限や名前一致に依存せず、**検索結果に出た記事のうち DB に主体として存在する行すべて**に「相関図に追加」を出すために使う。
+- **用途**: ❷ 主体者検索結果（Wikipedia の各行）ごとに、記事タイトルから組み立てた **ja.wikipedia の canonical `Person.url`** と一致し、かつ **`person.executed_as_master = true`** の人物を返す。`GET /person/search` の 20 件上限や名前一致に依存せず、**検索結果に出た記事のうち DB に主体として存在する行すべて**に「相関図に追加」を出すために使う。
 - **認証**: なし
 - **Content-Type**: `application/json`
 - **リクエストボディ**: `WikiMasterResolveIn`

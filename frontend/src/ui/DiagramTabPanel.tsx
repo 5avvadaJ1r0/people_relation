@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import { MAX_DIAGRAM_CENTER } from "../lib/diagramConstants";
 import {
   apiPostDiagramCoreNetwork,
   apiSearchPersonExecutedMasters,
@@ -10,9 +19,6 @@ import {
   CorrelationDiagramView,
   type CorrelationDiagramViewHandle,
 } from "./CorrelationDiagramView";
-
-/** 相関図の中心人物として選べる最大人数（API `CoreNetworkIn` と一致） */
-const MAX_DIAGRAM_CENTER = 10;
 
 /** 「相関図を作成する」および中心人物クリア時の関連値しきい値（`SUM(point) > total_point_gt` の gt） */
 const DEFAULT_DIAGRAM_TOTAL_POINT_GT = 1;
@@ -89,16 +95,15 @@ const IconArrowUpFromBracket = () => (
 );
 
 export type DiagramTabPanelProps = {
-  /** 関連者リスト側から中心人物を追加するときに渡す（`requestId` は同一操作の再実行でも発火させるための nonce） */
-  queueCenterPersons?: { persons: ApiPerson[]; requestId: number } | null;
-  onQueueCenterPersonsApplied?: () => void;
+  center: ApiPerson[];
+  setCenter: Dispatch<SetStateAction<ApiPerson[]>>;
   /** サジェスト空時の案内から「関連者リストアップ」タブへ切替え、主体者入力に相関図タブの入力文字列を渡す */
   onOpenListTabWithPrincipalQuery?: (query: string) => void;
 };
 
 export const DiagramTabPanel = ({
-  queueCenterPersons = null,
-  onQueueCenterPersonsApplied,
+  center,
+  setCenter,
   onOpenListTabWithPrincipalQuery,
 }: DiagramTabPanelProps) => {
   const [query, setQuery] = useState("");
@@ -109,7 +114,6 @@ export const DiagramTabPanel = ({
   const [suggestFetched, setSuggestFetched] = useState(false);
   const [suggestFocused, setSuggestFocused] = useState(false);
   const [highlightIdx, setHighlightIdx] = useState(-1);
-  const [center, setCenter] = useState<ApiPerson[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<string[]>([]);
   const [rows, setRows] = useState<DiagramRow[]>([]);
@@ -195,25 +199,6 @@ export const DiagramTabPanel = ({
     setHighlightIdx(-1);
     window.setTimeout(() => queryInputRef.current?.focus(), 0);
   };
-
-  useEffect(() => {
-    if (!queueCenterPersons) return;
-    const { persons } = queueCenterPersons;
-    setCenter((prev) => {
-      let next = prev;
-      for (const person of persons) {
-        if (next.some((c) => c.id === person.id)) continue;
-        if (next.length >= MAX_DIAGRAM_CENTER) break;
-        next = [...next, person];
-      }
-      return next.length === prev.length ? prev : next;
-    });
-    setQuery("");
-    setMatches([]);
-    setSuggestFetched(false);
-    setHighlightIdx(-1);
-    onQueueCenterPersonsApplied?.();
-  }, [queueCenterPersons, onQueueCenterPersonsApplied]);
 
   const removeCenter = (id: number) => {
     setCenter((prev) => prev.filter((c) => c.id !== id));
