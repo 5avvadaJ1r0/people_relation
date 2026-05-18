@@ -21,7 +21,7 @@ export const useMainTabAndDiagram = () => {
       requestId: Date.now(),
     });
     setMainTab("diagram");
-  }, []);
+  }, [isExecutedPrincipalForDiagram]);
 
   const queueCenterPersonIfExecutedMaster = useCallback(
     (person: ApiPerson | undefined | null) => {

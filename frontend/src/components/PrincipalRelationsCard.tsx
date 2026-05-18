@@ -132,11 +132,12 @@ export const PrincipalRelationsCard = ({
     );
   }, [displayRelations, selected]);
 
-  const handleBulkAddToDiagram = () => {
+  const handleBulkAddToDiagram = useCallback(() => {
     const persons = collectCheckedAddablePersons();
     if (persons.length === 0) return;
     onAddRelatedPersonsToDiagram(persons);
-  };
+    setDiagramAddCheckedIds(new Set());
+  }, [collectCheckedAddablePersons, onAddRelatedPersonsToDiagram]);
 
   const showRelatedRows = relations.length > 0 && displayRelations.length > 0;
 
