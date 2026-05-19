@@ -358,6 +358,12 @@ a {
   line-height: 1.5;
 }
 
+.diagramPeerLinksCheckbox {
+  flex: 0 0 auto;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .diagramThresholdN {
   color: var(--text);
   font-weight: 700;

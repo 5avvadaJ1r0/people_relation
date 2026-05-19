@@ -3,8 +3,26 @@ import type { Edge, Node } from "@xyflow/react";
 
 export type DiagramRow = { a: string; b: string; points: number };
 
+/** 中心人物以外同士のエッジを除く（関連者間リンク非表示用） */
+export const filterDiagramRowsForDisplay = (
+  rows: readonly DiagramRow[],
+  centerTitles: readonly string[],
+  includePeerLinks: boolean,
+): DiagramRow[] => {
+  if (includePeerLinks) return [...rows];
+  const centers = new Set(centerTitles);
+  return rows.filter((r) => centers.has(r.a) || centers.has(r.b));
+};
+
 /** 中心人物がちょうど 2 名のときのコアノード配置（縦: 上・下 / 横: 左・右） */
 export type TwoCoreLayout = "vertical" | "horizontal";
+
+/** React Flow の描画順（値が大きいほど手前） */
+export const DIAGRAM_Z_INDEX = {
+  edge: 0,
+  person: 1,
+  core: 10,
+} as const;
 
 const collectPeople = (
   rows: DiagramRow[],
@@ -123,6 +141,52 @@ const compareByLayoutPriority = (
   return a.localeCompare(b, "ja");
 };
 
+/** 中心 1 名: 主体値＋関連値（中心—関連者エッジの total_point）が大きいほど近くに配置 */
+const layoutSingleCoreSatellites = (
+  pos: Map<string, { x: number; y: number }>,
+  satellites: string[],
+  coreTieStrength: Map<string, number>,
+  centerX: number,
+  centerY: number,
+) => {
+  const rInner = 140;
+  const rOuter = 640;
+  const n = satellites.length;
+  if (n === 0) return;
+
+  let minT = Infinity;
+  let maxT = -Infinity;
+  for (const name of satellites) {
+    const t = coreTieStrength.get(name) ?? 0;
+    minT = Math.min(minT, t);
+    maxT = Math.max(maxT, t);
+  }
+  if (!Number.isFinite(minT)) minT = 0;
+  if (!Number.isFinite(maxT)) maxT = minT;
+
+  const radialFromTie = (t: number): number => {
+    if (maxT <= minT) return (rInner + rOuter) * 0.5;
+    const u = (t - minT) / (maxT - minT);
+    return rOuter - u * (rOuter - rInner);
+  };
+
+  const ordered = [...satellites].sort((a, b) => {
+    const ta = coreTieStrength.get(a) ?? 0;
+    const tb = coreTieStrength.get(b) ?? 0;
+    if (tb !== ta) return tb - ta;
+    return a.localeCompare(b, "ja");
+  });
+
+  ordered.forEach((name, i) => {
+    const theta = (n <= 1 ? 0 : i / n) * Math.PI * 2 - Math.PI / 2;
+    const r = radialFromTie(coreTieStrength.get(name) ?? 0);
+    pos.set(name, {
+      x: centerX + r * Math.cos(theta),
+      y: centerY + r * Math.sin(theta),
+    });
+  });
+};
+
 const layoutSatelliteInitial = (
   pos: Map<string, { x: number; y: number }>,
   people: Set<string>,
@@ -132,6 +196,7 @@ const layoutSatelliteInitial = (
   centerX: number,
   centerY: number,
   coreSet: Set<string>,
+  members: readonly string[],
 ) => {
   const satellites: string[] = [];
   for (const name of people) {
@@ -154,6 +219,47 @@ const layoutSatelliteInitial = (
     list.sort((a, b) =>
       compareByLayoutPriority(a, b, coreDistinctCount, coreTieStrength),
     );
+  }
+
+  if (members.length === 1) {
+    const coreSatellites = satellites.filter(
+      (name) => primaryCore.get(name) === members[0],
+    );
+    layoutSingleCoreSatellites(
+      pos,
+      coreSatellites,
+      coreTieStrength,
+      centerX,
+      centerY,
+    );
+    const placed = new Set(coreSatellites);
+    const orphans: string[] = [];
+    for (const name of people) {
+      if (coreSet.has(name) || placed.has(name)) continue;
+      orphans.push(name);
+    }
+    orphans.sort((a, b) =>
+      compareByLayoutPriority(a, b, coreDistinctCount, coreTieStrength),
+    );
+    const no = orphans.length;
+    let maxT = 1;
+    for (const id of orphans) maxT = Math.max(maxT, coreTieStrength.get(id) ?? 0);
+    orphans.forEach((name, i) => {
+      let h = 0;
+      for (let j = 0; j < name.length; j++) h = (h * 31 + name.charCodeAt(j)) | 0;
+      const ang = ((Math.abs(h) % 360) * Math.PI) / 180;
+      const t = coreTieStrength.get(name) ?? 0;
+      const inner = 360;
+      const outer = 680;
+      const radial = outer - (t / maxT) * (outer - inner);
+      const frac = no <= 1 ? 0 : i / (no - 1);
+      const jitter = (frac - 0.5) * 40;
+      pos.set(name, {
+        x: centerX + (radial + jitter) * Math.cos(ang),
+        y: centerY + (radial + jitter) * Math.sin(ang),
+      });
+    });
+    return;
   }
 
   const n = satellites.length;
@@ -299,13 +405,18 @@ const layoutNodes = (
   const centerY = 400;
   const coreRingR = 215;
 
-  const pos = layoutCoreRing(
-    centerX,
-    centerY,
-    coreRingR,
-    members,
-    members.length === 2 ? twoCoreLayout : undefined,
-  );
+  const pos = new Map<string, { x: number; y: number }>();
+  if (members.length === 1) {
+    pos.set(members[0], { x: centerX, y: centerY });
+  } else {
+    layoutCoreRing(
+      centerX,
+      centerY,
+      coreRingR,
+      members,
+      members.length === 2 ? twoCoreLayout : undefined,
+    ).forEach((p, id) => pos.set(id, p));
+  }
   layoutSatelliteInitial(
     pos,
     people,
@@ -315,6 +426,7 @@ const layoutNodes = (
     centerX,
     centerY,
     coreSet,
+    members,
   );
 
   const initial = new Map(pos);
@@ -374,7 +486,7 @@ const rowsToEdges = (
       targetHandle: "in",
       type: "dimensionalSmoothstep",
       pathOptions: { offset: pathOffset, borderRadius: 14 },
-      zIndex: 0,
+      zIndex: DIAGRAM_Z_INDEX.edge,
       label: String(r.points),
       style: { strokeWidth: width },
       labelStyle: { fill: "#4c1d95", fontSize: 10, fontWeight: 600 },
@@ -466,7 +578,7 @@ export const buildDiagramNodesAndEdges = (
         position: p,
         data: { label: id },
         type: "core",
-        zIndex: 1,
+        zIndex: DIAGRAM_Z_INDEX.core,
       });
     } else {
       const v = coreTieStrength.get(id) ?? 0;
@@ -476,7 +588,7 @@ export const buildDiagramNodesAndEdges = (
         position: p,
         data: { label: id, tieHeat, tieSum: v, memberCount },
         type: "person",
-        zIndex: 1,
+        zIndex: DIAGRAM_Z_INDEX.person,
       });
     }
   }

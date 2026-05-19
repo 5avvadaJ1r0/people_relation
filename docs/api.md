@@ -126,7 +126,7 @@ FastAPI標準のエラー応答を返します。
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| center_titles | string[] | yes | 中心人物の `person.title` を **2〜10件**（重複は除去）。空要素は除去後に件数チェックする。 |
+| center_titles | string[] | yes | 中心人物の `person.title` を **1〜10件**（重複は除去）。空要素は除去後に件数チェックする。 |
 | total_point_gt | int | no | デフォルト `1`。`GROUP BY` 後の条件 `HAVING SUM(relation.point) > total_point_gt`（**0 以上**）。大きいほど表示ペアは厳しくなる。 |
 
 ### DiagramRelationPairOut
@@ -142,7 +142,7 @@ FastAPI標準のエラー応答を返します。
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
 | center_titles | string[] | yes | リクエストで正規化後の中心人物タイトル一覧 |
-| pairs | DiagramRelationPairOut[] | yes | リクエストの `total_point_gt` に対し `SUM(point) > total_point_gt` かつ `point <> 0` を満たす無向ペア（`total_point` 降順） |
+| pairs | DiagramRelationPairOut[] | yes | 中心に触れてネットワークに入った人物集合内の無向ペアのうち、`SUM(point) > total_point_gt` かつ `point <> 0` を満たすもの（中心—関連者・関連者—関連者を含む、`total_point` 降順） |
 
 ### PersonSearchOut
 
@@ -185,7 +185,7 @@ FastAPI標準のエラー応答を返します。
 | POST | `/api/v1/person/resolve_wiki_masters` | Wikipedia 検索各行の記事 URL と DB 上の主体者を一括突合（❷「相関図に追加」用） |
 | GET | `/api/v1/person/{person_id}/relations` | 主体→関連（最大50件） |
 | GET | `/api/v1/person/{person_id}/relations_aggregate` | 双方向集計（最大50件→total でソート） |
-| POST | `/api/v1/diagram/core_network` | 中心人物（2〜10名の title）に基づく無向ペア集約エッジ取得 |
+| POST | `/api/v1/diagram/core_network` | 中心人物（1〜10名の title）に基づく無向ペア集約エッジ取得 |
 | GET | `/api/v1/wiki/person_search_sse` | Wikipedia 検索 + 人物判定（SSE） |
 | GET | `/api/v1/wiki/extract_relations_sse` | 2-hop 抽出（SSE） |
 
@@ -470,11 +470,11 @@ sequenceDiagram
 - **エラー**
   - **422**: `items` が空、51 件超、タイトル不正など
 
-### 4-3) 相関図エッジ取得（中心人物 2〜10 名）
+### 4-3) 相関図エッジ取得（中心人物 1〜10 名）
 
 `POST /api/v1/diagram/core_network`
 
-- **用途**: 指定した中心人物の `person.title` に **少なくとも一方が一致する** `relation` 行を対象に、無向ペアへ集約したエッジ一覧を返す（フロントは React Flow のデータソースとして利用）。
+- **用途**: 指定した中心人物を含む相関図ネットワークの `relation` を無向ペアへ集約したエッジ一覧を返す（フロントは React Flow のデータソースとして利用）。まず中心に触れるペアでネットワーク上の人物を決め、**その人物同士**（関連者間を含む）のペアも同じしきい値で返す。
 - **認証**: なし
 - **Content-Type**: `application/json`
 - **リクエストボディ**: `CoreNetworkIn`
@@ -487,7 +487,7 @@ sequenceDiagram
 ```
 
 - **リクエストパラメータ**
-  - `center_titles` (string[], 必須): 2〜10 名のユニークな `title`
+  - `center_titles` (string[], 必須): 1〜10 名のユニークな `title`
   - `total_point_gt` (int, 任意, デフォルト `1`, 最小 `0`): 集約後の合計点がこの値**より大きい**ペアだけを返す。値を**上げる**と表示されるペアは**減る**（しきい値が厳しくなる）。**下げる**とペアは**増える**。
 - **レスポンス 200**: `DiagramCoreNetworkOut`
 
@@ -505,13 +505,12 @@ sequenceDiagram
 ```
 
 - **集約ロジック（DB）**
-  - `relation` を `master/slave` の `person.title` で **`CASE` により辞書順に無向ペア化**（PostgreSQL の `LEAST`/`GREATEST` と同等）し、`SUM(point)` を取る
-  - `WHERE relation.point <> 0` かつ `(p1.title IN (:titles) OR p2.title IN (:titles))`
-  - `GROUP BY` ペアキー後 `HAVING SUM(point) > total_point_gt`（`total_point_gt` はリクエスト値、省略時は `1`）
-  - `ORDER BY SUM(point) DESC`
+  1. **ネットワーク構築**: `relation` を無向ペア化し、`WHERE relation.point <> 0` かつ `(p1.title IN (:center_titles) OR p2.title IN (:center_titles))`、`HAVING SUM(point) > total_point_gt` を満たすペアの両端 title と `center_titles` の和集合をネットワーク人物とする。
+  2. **全エッジ取得**: 同じ無向ペア集約を、ネットワーク人物集合について `p1.title IN (:network) AND p2.title IN (:network)` で再実行し、結果を `ORDER BY SUM(point) DESC` で返す（中心—関連者に加え、**関連者—関連者**も含む）。
+  - ペア正規化は `CASE` による辞書順（PostgreSQL の `LEAST`/`GREATEST` と同等）。`total_point_gt` は両段階で同一。
 - **レート制限**: 特になし
 - **エラー**
-  - **422**: 中心人物が 2〜10 名のユニークな `title` に正規化できない場合、`total_point_gt` が負、または JSON 形式不正
+  - **422**: 中心人物が 1〜10 名のユニークな `title` に正規化できない場合、`total_point_gt` が負、または JSON 形式不正
 
 #### 通信シーケンス（相関図作成）
 
@@ -550,7 +549,7 @@ sequenceDiagram
 - 中心人物のキーは **`person.title`**（`POST /relation` 保存時の Wikipedia 記事タイトル）。フロントは中心チップの `ApiPerson.title` を `center_titles` に載せる。
 - `relation` は有向だが、本 API は **同一無向ペア**（`title` の辞書順で正規化）に属する **すべての有向行**の `point` を **`SUM`** する（例: A→B が 3・B→A が 2 なら `total_point = 5`）。
 - `point = 0` の行は集約対象外。集約後は **`SUM(point) > total_point_gt`**（厳密な「より大きい」。省略時・初回作成時のフロント既定は `1`）。
-- ペアの少なくとも一方の `title` が `center_titles` に含まれる行だけが `WHERE` に入る（中心外同士のエッジだけのペアは返らない）。
+- 返却ペアは、**1 段目**で中心に触れてしきい値を満たしたペアから決まるネットワーク人物集合に属するものに限る。関連者同士のペアは、両者がその集合に入り、**2 段目**の集約で `SUM(point) > total_point_gt` を満たすときだけ含まれる。
 
 **1) 中心人物サジェスト（任意・入力のたびにデバウンス実行）**
 
@@ -579,14 +578,16 @@ WHERE relation.master_person_id IN (:id1, :id2, ...);
 
 **HTTP（`POST /diagram/core_network`）** では Pydantic の `CoreNetworkIn.normalize_center_titles`（`app/schemas.py`）が先に実行される。
 
-- リクエスト配列は **2〜10 要素**（`Field(min_length=2, max_length=10)`）
-- 各 `title` を `strip`、空文字除去、`dict.fromkeys` で重複排除したうえで、ユニークが **2 件未満または 11 件超** → **422**（集約 SQL は実行しない）
+- リクエスト配列は **1〜10 要素**（`Field(min_length=1, max_length=10)`）
+- 各 `title` を `strip`、空文字除去、`dict.fromkeys` で重複排除したうえで、ユニークが **0 件または 11 件超** → **422**（集約 SQL は実行しない）
 
 通過後の `center_titles` が `app.services.diagram.core_network` → `aggregate_core_network_edges` に渡される。CRUD の `_normalize_core_network_center_titles` は同趣旨の防御的チェックで、空になった場合のみ SQL なしで `[]` を返す（通常の HTTP では 422 のため到達しない）。
 
 **3) 無向ペア集約（「相関図を作成する」・「関連者を増やす／減らす」）**
 
-SQLAlchemy は `person` を `p1` / `p2` とエイリアスし、SQLite 互換のため `LEAST`/`GREATEST` の代わりに `CASE` でペア正規化する。等価な PostgreSQL は次のとおり（`:titles` は正規化後の title 配列、`:total_point_gt` はリクエストの `total_point_gt`）。
+SQLAlchemy は `person` を `p1` / `p2` とエイリアスし、SQLite 互換のため `LEAST`/`GREATEST` の代わりに `CASE` でペア正規化する。実装は **2 段の SELECT**（`app/crud/diagram.py` の `aggregate_core_network_edges`）。
+
+**3a) ネットワーク人物の決定**（`:center_titles` は正規化後の中心 title 配列）
 
 ```sql
 SELECT
@@ -597,7 +598,28 @@ FROM relation AS r
 INNER JOIN person AS p1 ON p1.id = r.master_person_id
 INNER JOIN person AS p2 ON p2.id = r.slave_person_id
 WHERE r.point <> 0
-  AND (p1.title IN (:titles) OR p2.title IN (:titles))
+  AND (p1.title IN (:center_titles) OR p2.title IN (:center_titles))
+GROUP BY
+  CASE WHEN p1.title <= p2.title THEN p1.title ELSE p2.title END,
+  CASE WHEN p1.title <= p2.title THEN p2.title ELSE p1.title END
+HAVING SUM(r.point) > :total_point_gt;
+```
+
+3a の各行の `pair_a` / `pair_b` と `:center_titles` の和集合を `:network_titles` とする。
+
+**3b) 返却エッジ**（`:network_titles`、同じ `:total_point_gt`）
+
+```sql
+SELECT
+  CASE WHEN p1.title <= p2.title THEN p1.title ELSE p2.title END AS pair_a,
+  CASE WHEN p1.title <= p2.title THEN p2.title ELSE p1.title END AS pair_b,
+  SUM(r.point) AS total_point
+FROM relation AS r
+INNER JOIN person AS p1 ON p1.id = r.master_person_id
+INNER JOIN person AS p2 ON p2.id = r.slave_person_id
+WHERE r.point <> 0
+  AND p1.title IN (:network_titles)
+  AND p2.title IN (:network_titles)
 GROUP BY
   CASE WHEN p1.title <= p2.title THEN p1.title ELSE p2.title END,
   CASE WHEN p1.title <= p2.title THEN p2.title ELSE p1.title END
@@ -1020,6 +1042,7 @@ sequenceDiagram
 ## 変更履歴
 
 - 2026-05-19: **相関図作成**の実行 SQL を [§4-3 実行 SQL（相関図作成）](#実行-sql相関図作成) に追記。正規化は HTTP では **422**（Pydantic）、しきい値 UI は **「関連者を増やす／減らす」** に実装を合わせて記述を修正。
+- 2026-05-19: **`POST /api/v1/diagram/core_network`** の中心人物を **1〜10 名**に拡張（従来は 2〜10 名）。関連者間エッジはネットワーク内の無向ペア集約で返す（[§4-3](#4-3-相関図エッジ取得中心人物-110-名)）。
 - 2026-05-17: Wikipedia リンク集計のノイズ節除外を **`脚注`・`出典`・`参考文献`・`関連項目`・`外部リンク`** に統一（wikitext / parse HTML / extract プレーンテキスト）。外部リンク最終見出し時の末尾 navbox 除去は従来どおり。
 - 2026-05-14: **`PersonOut` / `PersonSearchOut` の意味整理**: `has_relations` を **`relation` に主体としての行が存在するか** に変更し、**`is_executed_master`**（`executed_as_master` / `executed_as_master_at`）を追加。フロントの **❸ キャッシュ初回読み・「キャッシュ再取得」** は `has_relations` **および** `is_executed_master`（`isPrincipalRelationsCacheSource`）。❷「相関図に追加」等の主体者実行導線は `is_executed_master` を参照する。
 - 2026-05-14: **`POST /api/v1/person/resolve_wiki_masters`** を追加。Wikipedia 検索結果の各行（記事タイトル → canonical `Person.url`）と **主体者として実行済み**の `person` を一括突合し、❷「相関図に追加」を `GET /person/search` の件数・名前一致に依存させない。

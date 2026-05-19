@@ -380,6 +380,7 @@ export const CorrelationDiagramView = forwardRef<
           colorMode="dark"
           minZoom={0.15}
           maxZoom={1.8}
+          elevateNodesOnSelect={false}
           fitView
           proOptions={{ hideAttribution: true }}
         >

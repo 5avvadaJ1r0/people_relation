@@ -84,7 +84,7 @@ class WikiMasterResolveOut(BaseModel):
 class CoreNetworkIn(BaseModel):
     """相関図（中心人物複数）のエッジ取得リクエスト。"""
 
-    center_titles: list[str] = Field(min_length=2, max_length=10)
+    center_titles: list[str] = Field(min_length=1, max_length=10)
     total_point_gt: int = Field(
         default=1,
         ge=0,
@@ -96,9 +96,9 @@ class CoreNetworkIn(BaseModel):
     def normalize_center_titles(cls, v: list[str]) -> list[str]:
         cleaned = [t.strip() for t in v if t.strip()]
         uniq = list(dict.fromkeys(cleaned))
-        if len(uniq) < 2 or len(uniq) > 10:
+        if len(uniq) < 1 or len(uniq) > 10:
             raise ValueError(
-                "中心人物は2名以上10名以下のユニークな人物（title）を指定してください"
+                "中心人物は1名以上10名以下のユニークな人物（title）を指定してください"
             )
         return uniq
 
