@@ -7,14 +7,21 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { MAX_DIAGRAM_CENTER } from "../lib/diagramConstants";
+import {
+  MAX_DIAGRAM_CENTER,
+  MIN_DIAGRAM_CENTER,
+} from "../lib/diagramConstants";
 import {
   apiPostDiagramCoreNetwork,
   apiSearchPersonExecutedMasters,
 } from "../lib/api";
 import { canShareDiagramImage } from "../lib/correlationDiagramExport";
 import type { ApiPerson } from "../lib/types";
-import type { DiagramRow, TwoCoreLayout } from "../lib/diagramGraph";
+import {
+  filterDiagramRowsForDisplay,
+  type DiagramRow,
+  type TwoCoreLayout,
+} from "../lib/diagramGraph";
 import {
   CorrelationDiagramView,
   type CorrelationDiagramViewHandle,
@@ -116,7 +123,10 @@ export const DiagramTabPanel = ({
   const [highlightIdx, setHighlightIdx] = useState(-1);
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<string[]>([]);
-  const [rows, setRows] = useState<DiagramRow[]>([]);
+  /** API から取得した全エッジ（関連者間リンク含む） */
+  const [allRows, setAllRows] = useState<DiagramRow[]>([]);
+  /** 関連者同士のリンクを図に含める（既定 OFF） */
+  const [showPeerLinks, setShowPeerLinks] = useState(false);
   const [totalPointGt, setTotalPointGt] = useState(DEFAULT_DIAGRAM_TOTAL_POINT_GT);
   /** 中心 2 名の相関図でのみ利用（縦＝上・下 / 横＝左・右） */
   const [twoCoreLayout, setTwoCoreLayout] = useState<TwoCoreLayout>("vertical");
@@ -205,7 +215,8 @@ export const DiagramTabPanel = ({
   };
 
   const canBuild =
-    center.length >= 2 && center.length <= MAX_DIAGRAM_CENTER;
+    center.length >= MIN_DIAGRAM_CENTER &&
+    center.length <= MAX_DIAGRAM_CENTER;
 
   /** `SUM(point) > total_point_gt` で無向ペアを絞り込む。gt を上げると関連者は減り、下げると増える。 */
   const loadDiagramWithGt = async (gt: number) => {
@@ -220,7 +231,7 @@ export const DiagramTabPanel = ({
       });
       setTotalPointGt(gt);
       setMembers(data.center_titles);
-      setRows(
+      setAllRows(
         data.pairs.map((x) => ({
           a: x.person1,
           b: x.person2,
@@ -238,13 +249,18 @@ export const DiagramTabPanel = ({
     await loadDiagramWithGt(DEFAULT_DIAGRAM_TOTAL_POINT_GT);
   };
 
+  const displayRows = useMemo(
+    () => filterDiagramRowsForDisplay(allRows, members, showPeerLinks),
+    [allRows, members, showPeerLinks],
+  );
+
   const thresholdUiActive = members.length > 0 && canBuild;
   const canExpandRelated = totalPointGt > 0 && thresholdUiActive;
-  const canShrinkRelated = rows.length > 0 && thresholdUiActive;
+  const canShrinkRelated = allRows.length > 0 && thresholdUiActive;
 
   const hasDiagram = useMemo(
-    () => members.length > 0 || rows.length > 0,
-    [members.length, rows.length],
+    () => members.length > 0 || allRows.length > 0,
+    [members.length, allRows.length],
   );
 
   const onShareDiagramImage = useCallback(() => {
@@ -471,7 +487,9 @@ export const DiagramTabPanel = ({
               <h2 className="diagramFlowSectionTitle diagramCardLeadTitle">
                 相関図を作成する
               </h2>
-              <h2>中心人物（2〜{MAX_DIAGRAM_CENTER}名）</h2>
+              <h2>
+                中心人物（{MIN_DIAGRAM_CENTER}〜{MAX_DIAGRAM_CENTER}名）
+              </h2>
               <div className="diagramCenterChips">
                 {center.length === 0 ? (
                   <div className="subtitle">まだ選んでいません。</div>
@@ -508,7 +526,8 @@ export const DiagramTabPanel = ({
                   onClick={() => {
                     setCenter([]);
                     setMembers([]);
-                    setRows([]);
+                    setAllRows([]);
+                    setShowPeerLinks(false);
                     setTotalPointGt(DEFAULT_DIAGRAM_TOTAL_POINT_GT);
                     setTwoCoreLayout("vertical");
                     setError(null);
@@ -581,10 +600,20 @@ export const DiagramTabPanel = ({
                   {!canBuild ? (
                     <span className="diagramThresholdWarn">
                       {" "}
-                      中心人物を 2〜{MAX_DIAGRAM_CENTER} 名に戻すと、下のボタンで再取得できます。
+                      中心人物を {MIN_DIAGRAM_CENTER}〜{MAX_DIAGRAM_CENTER}{" "}
+                      名に戻すと、下のボタンで再取得できます。
                     </span>
                   ) : null}
                 </div>
+                <label className="detailMetaCheckboxLabel diagramPeerLinksCheckbox">
+                  <input
+                    type="checkbox"
+                    checked={showPeerLinks}
+                    disabled={busy}
+                    onChange={(e) => setShowPeerLinks(e.target.checked)}
+                  />
+                  <span>関連者同士のリンクを表示</span>
+                </label>
                 <div className="row diagramThresholdButtons">
                   <button
                     type="button"
@@ -603,7 +632,7 @@ export const DiagramTabPanel = ({
                     type="button"
                     disabled={busy || !canShrinkRelated}
                     title={
-                      rows.length === 0
+                      allRows.length === 0
                         ? "表示中のペアがないため、これ以上しきい値を上げられません"
                         : "しきい値を上げて関連者を減らす"
                     }
@@ -648,7 +677,7 @@ export const DiagramTabPanel = ({
           <CorrelationDiagramView
             ref={diagramViewRef}
             members={members}
-            rows={rows}
+            rows={displayRows}
             twoCoreLayout={twoCoreLayout}
             onDiagramShareReadyChange={setDiagramShareReady}
           />

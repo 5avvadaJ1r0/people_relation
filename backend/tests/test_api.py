@@ -99,9 +99,18 @@ def test_resolve_wiki_masters_returns_master_by_article_url(client: TestClient) 
     assert row["person"]["is_executed_master"] is True
 
 
-def test_diagram_core_network_validation(client: TestClient) -> None:
-    r = client.post("/api/v1/diagram/core_network", json={"center_titles": ["a"]})
+def test_diagram_core_network_validation_empty(client: TestClient) -> None:
+    r = client.post("/api/v1/diagram/core_network", json={"center_titles": []})
     assert r.status_code == 422
+
+
+def test_diagram_core_network_single_center(client: TestClient) -> None:
+    r = client.post(
+        "/api/v1/diagram/core_network",
+        json={"center_titles": ["図甲タイトル"]},
+    )
+    assert r.status_code == 200
+    assert r.json()["center_titles"] == ["図甲タイトル"]
 
 
 def test_diagram_core_network_validation_too_many_centers(client: TestClient) -> None:
@@ -117,7 +126,8 @@ def test_diagram_core_network_validation_collapses_to_single_title(
         "/api/v1/diagram/core_network",
         json={"center_titles": ["only", " only ", "only"]},
     )
-    assert r.status_code == 422
+    assert r.status_code == 200
+    assert r.json()["center_titles"] == ["only"]
 
 
 def test_diagram_core_network_validation_total_point_gt_negative(
@@ -272,6 +282,89 @@ def test_diagram_core_network_returns_pairs(client: TestClient) -> None:
     )
     assert r4.status_code == 200
     assert len(r4.json()["pairs"]) == 1
+
+
+def test_diagram_core_network_includes_related_to_related_edges(
+    client: TestClient,
+) -> None:
+    """中心に触れる関連者同士の relation も、同じ total_point_gt で返す。"""
+    payload = [
+        {
+            "master": {
+                "name": "図丙",
+                "url": "https://example.com/diagram-c",
+                "title": "図丙タイトル",
+            },
+            "slave": {
+                "name": "図丁",
+                "url": "https://example.com/diagram-d",
+                "title": "図丁タイトル",
+            },
+            "point": 4,
+        },
+        {
+            "master": {
+                "name": "図戊",
+                "url": "https://example.com/diagram-e",
+                "title": "図戊タイトル",
+            },
+            "slave": {
+                "name": "図己",
+                "url": "https://example.com/diagram-f",
+                "title": "図己タイトル",
+            },
+            "point": 4,
+        },
+        {
+            "master": {
+                "name": "図丁",
+                "url": "https://example.com/diagram-d",
+                "title": "図丁タイトル",
+            },
+            "slave": {
+                "name": "図己",
+                "url": "https://example.com/diagram-f",
+                "title": "図己タイトル",
+            },
+            "point": 3,
+        },
+    ]
+    r = client.post(
+        "/api/v1/relation",
+        json=payload,
+        params={"executed_master_url": "https://example.com/diagram-c"},
+    )
+    assert r.status_code == 200
+
+    r2 = client.post(
+        "/api/v1/diagram/core_network",
+        json={"center_titles": ["図丙タイトル", "図戊タイトル"]},
+    )
+    assert r2.status_code == 200
+    raw_pairs = r2.json()["pairs"]
+
+    def total_between(t1: str, t2: str) -> int | None:
+        for p in raw_pairs:
+            if {p["person1"], p["person2"]} == {t1, t2}:
+                return int(p["total_point"])
+        return None
+
+    assert total_between("図丁タイトル", "図己タイトル") == 3
+    assert total_between("図丙タイトル", "図丁タイトル") == 4
+    assert total_between("図戊タイトル", "図己タイトル") == 4
+
+    r3 = client.post(
+        "/api/v1/diagram/core_network",
+        json={
+            "center_titles": ["図丙タイトル", "図戊タイトル"],
+            "total_point_gt": 3,
+        },
+    )
+    assert r3.status_code == 200
+    assert all(
+        p["person1"] != "図丁タイトル" or p["person2"] != "図己タイトル"
+        for p in r3.json()["pairs"]
+    )
 
 
 def test_person_relations_not_found(client: TestClient) -> None:
