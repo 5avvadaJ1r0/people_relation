@@ -3,9 +3,19 @@
 ## 画面の挙動（React）
 
 - **❶ 主体者入力** — 氏名の一部を入力すると、`GET /api/v1/person/search_executed_masters` で **主体者として実行済み**（`executed_as_master`）の人物をサジェスト表示する（`person.name` の部分一致）。サジェストから人物を選ぶと、即座に ❷ へ関連者一覧を表示する。
-- **❷ 主体者・関連者** — 選択した主体者について **`GET /api/v1/person/{id}/relations_aggregate`** で **キャッシュのみ**表示する（Web からの Wikipedia 検索・`person_search_sse` / `extract_relations_sse` / `POST /api/v1/relation` は行わない。関連者の新規抽出・登録はワーカー等のバックエンド処理に委ねる）。
+- **❷ 主体者・関連者** — 選択した主体者について **`GET /api/v1/person/{id}/relations_aggregate`** で **キャッシュのみ**表示する（Web からの Wikipedia 検索・`person_search_sse` / `extract_relations_sse` / `POST /api/v1/relation` は行わない。関連者の新規抽出・登録はワーカー等のバックエンド処理に委ねる）。バックエンドが発行する SQL の全文は [api.md の「実行 SQL（関連者リストアップ）」](./api.md#実行-sql関連者リストアップ) を参照。
 - 主体者メタ（氏名ピルと「関連値 0 は除外」の間）に **「相関図に追加」** を表示し、クリックで相関図タブの中心候補に追加する（主体者実行済みのとき）。
 - 関連者テーブルは **主体値（forward） / 関連値（reverse） / 合計値（total）**。既定で **「関連値 0 は除外」** がオン（オフにすると reverse が 0 の行も表示）。
+
+### 関連者リストの表示順
+
+API は DB 上 forward の `point` 降順で最大 50 件を取得したあと、サーバーで **`total_point` 降順**に並べ替えて返す。フロント（`frontend/src/hooks/peopleRelationApp/usePrincipalDetailPhase.ts`）ではさらに次を行う。
+
+1. 既定で `reverse_point !== 0` の行だけ残す（「関連値 0 は除外」）。
+2. `total_point` 降順でソート。
+3. 先頭 **100 件**まで表示（`WIKI_MAX_RELATED_DISPLAY`）。
+
+手元の PostgreSQL で同じ順序を試す SQL は [api.md](./api.md#実行-sql関連者リストアップ) の「手元 DB で画面と同じ上位を確認する例」を参照。
 - 関連者行の **「相関図に追加」** は、当該関連者が DB 上 **主体者として関係保存を実行済み**（`is_executed_master` が true）のときだけ表示し、クリックで相関図タブへ移動して中心候補に追加する。
 - **「戻る」** で主体者未選択の状態に戻る。
 
@@ -20,7 +30,7 @@
 メイン画面の **「相関図作成」** タブでは、データベースに保存済みの関係（`POST /api/v1/relation` で主体として保存したデータ）だけを使い、**複数の中心人物**を結ぶ無向ネットワークを可視化する。
 
 - **中心人物の選び方** — 氏名の一部で検索し、サジェストから追加する。候補は **いままで主体者として関係保存を実行したことがある人物のみ**（`GET /api/v1/person/search_executed_masters`）。**2〜10 名**選べる。
-- **図の生成** — 「相関図を作成する」で **`POST /api/v1/diagram/core_network`** を呼び、中心人物同士および共通の関連者を **無向ペア**（両方向の `point` を合算した `total_point`）として取得し、フロント（React Flow / `@xyflow/react`）でノード・エッジとして描画する。
+- **図の生成** — 「相関図を作成する」で **`POST /api/v1/diagram/core_network`** を呼び、中心人物同士および共通の関連者を **無向ペア**（両方向の `point` を合算した `total_point`）として取得し、フロント（React Flow / `@xyflow/react`）でノード・エッジとして描画する。バックエンドで実行される SQL の詳細は [api.md §4-3 実行 SQL（相関図作成）](./api.md#実行-sql相関図作成)。
 - **しきい値** — 表示は **`SUM(point) > total_point_gt`** を満たす関係だけに絞る。既定は `total_point_gt = 1`。「関連者を増やす／減らす」でしきい値を前後させ、同じ API で再取得してノード数を調整できる。
 - **中心が 2 名のとき** — 2 つのコアノードの配置を **縦（上・下）／横（左・右）** で切り替えられる。
 - **共有** — Web Share API で画像共有が使える環境では、描画完了後に **「相関図を共有」** から PNG を共有できる（未対応ブラウザではボタンは出ない）。

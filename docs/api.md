@@ -133,8 +133,8 @@ FastAPI標準のエラー応答を返します。
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| person1 | string | yes | 無向ペアの片側（`LEAST(p1.title, p2.title)`） |
-| person2 | string | yes | 無向ペアのもう片側（`GREATEST(p1.title, p2.title)`） |
+| person1 | string | yes | 無向ペアの辞書順で小さい方の `title`（集約 SQL の `pair_a`） |
+| person2 | string | yes | 無向ペアの辞書順で大きい方の `title`（集約 SQL の `pair_b`） |
 | total_point | int | yes | 該当する `relation` 行の `point` 合計 |
 
 ### DiagramCoreNetworkOut
@@ -505,13 +505,136 @@ sequenceDiagram
 ```
 
 - **集約ロジック（DB）**
-  - `relation` を `master/slave` の `person.title` として `LEAST`/`GREATEST` で無向ペア化し、`SUM(point)` を取る
-  - `WHERE relation.point <> 0` かつ `(master.title IN (:titles) OR slave.title IN (:titles))`
-  - `GROUP BY` 後 `HAVING SUM(point) > total_point_gt`（`total_point_gt` はリクエスト値、省略時は `1`）
-  - `ORDER BY total_point DESC`
+  - `relation` を `master/slave` の `person.title` で **`CASE` により辞書順に無向ペア化**（PostgreSQL の `LEAST`/`GREATEST` と同等）し、`SUM(point)` を取る
+  - `WHERE relation.point <> 0` かつ `(p1.title IN (:titles) OR p2.title IN (:titles))`
+  - `GROUP BY` ペアキー後 `HAVING SUM(point) > total_point_gt`（`total_point_gt` はリクエスト値、省略時は `1`）
+  - `ORDER BY SUM(point) DESC`
 - **レート制限**: 特になし
 - **エラー**
   - **422**: 中心人物が 2〜10 名のユニークな `title` に正規化できない場合、`total_point_gt` が負、または JSON 形式不正
+
+#### 通信シーケンス（相関図作成）
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant FE as Frontend (相関図タブ)
+    participant API as FastAPI
+    participant DB as Postgres (SQLAlchemy)
+
+    Note over FE: 中心人物のサジェスト入力時（任意）
+    FE->>API: GET /api/v1/person/search_executed_masters?name=...
+    API->>DB: SELECT person (ILIKE + executed_as_master)
+    API->>DB: SELECT DISTINCT master_person_id IN (...)
+    API-->>FE: 200 PersonSearchOut[]
+
+    FE->>API: POST /api/v1/diagram/core_network
+    Note over FE: 「相関図を作成する」または「関連者を増やす／減らす」
+    API->>DB: 無向ペア集約 SELECT (relation + person×2)
+    DB-->>API: (pair_a, pair_b, total_point)[]
+    API-->>FE: 200 DiagramCoreNetworkOut
+    Note over FE: React Flow でノード・エッジ描画（SQL なし）
+```
+
+#### 実行 SQL（相関図作成）
+
+**相関図タブ**（[frontend.md](./frontend.md#相関図作成タブ機能追加)）で DB に触れるのは次の 2 系統のみ。Wikipedia 抽出や `relations_aggregate` は **呼ばない**（保存済み `relation` のみを可視化する）。
+
+| 操作 | HTTP | 実装 |
+|------|------|------|
+| 中心人物サジェスト | `GET /api/v1/person/search_executed_masters` | `app.crud.person.search_persons_executed_as_master` + `person_ids_with_forward_relation` |
+| 図の生成・しきい値変更 | `POST /api/v1/diagram/core_network` | `app.crud.diagram.aggregate_core_network_edges` |
+
+**前提**
+
+- 中心人物のキーは **`person.title`**（`POST /relation` 保存時の Wikipedia 記事タイトル）。フロントは中心チップの `ApiPerson.title` を `center_titles` に載せる。
+- `relation` は有向だが、本 API は **同一無向ペア**（`title` の辞書順で正規化）に属する **すべての有向行**の `point` を **`SUM`** する（例: A→B が 3・B→A が 2 なら `total_point = 5`）。
+- `point = 0` の行は集約対象外。集約後は **`SUM(point) > total_point_gt`**（厳密な「より大きい」。省略時・初回作成時のフロント既定は `1`）。
+- ペアの少なくとも一方の `title` が `center_titles` に含まれる行だけが `WHERE` に入る（中心外同士のエッジだけのペアは返らない）。
+
+**1) 中心人物サジェスト（任意・入力のたびにデバウンス実行）**
+
+```sql
+SELECT
+  id, title, name, url,
+  executed_as_master, executed_as_master_at,
+  created, updated
+FROM person
+WHERE name ILIKE :pattern   -- 実装は '%' || trim(:name) || '%'
+  AND executed_as_master IS TRUE
+LIMIT 20;
+```
+
+`:pattern` は `'%' || trim(:name) || '%'`（SQLAlchemy `Person.name.ilike`）。
+
+`PersonSearchOut.has_relations` 用の付帯クエリ（`app.crud.relation.person_ids_with_forward_relation`。[§4-2](#4-2-人物検索主体者実行済みのみ) と同様）:
+
+```sql
+SELECT DISTINCT relation.master_person_id
+FROM relation
+WHERE relation.master_person_id IN (:id1, :id2, ...);
+```
+
+**2) リクエスト正規化（SQL の前・Python）**
+
+**HTTP（`POST /diagram/core_network`）** では Pydantic の `CoreNetworkIn.normalize_center_titles`（`app/schemas.py`）が先に実行される。
+
+- リクエスト配列は **2〜10 要素**（`Field(min_length=2, max_length=10)`）
+- 各 `title` を `strip`、空文字除去、`dict.fromkeys` で重複排除したうえで、ユニークが **2 件未満または 11 件超** → **422**（集約 SQL は実行しない）
+
+通過後の `center_titles` が `app.services.diagram.core_network` → `aggregate_core_network_edges` に渡される。CRUD の `_normalize_core_network_center_titles` は同趣旨の防御的チェックで、空になった場合のみ SQL なしで `[]` を返す（通常の HTTP では 422 のため到達しない）。
+
+**3) 無向ペア集約（「相関図を作成する」・「関連者を増やす／減らす」）**
+
+SQLAlchemy は `person` を `p1` / `p2` とエイリアスし、SQLite 互換のため `LEAST`/`GREATEST` の代わりに `CASE` でペア正規化する。等価な PostgreSQL は次のとおり（`:titles` は正規化後の title 配列、`:total_point_gt` はリクエストの `total_point_gt`）。
+
+```sql
+SELECT
+  CASE WHEN p1.title <= p2.title THEN p1.title ELSE p2.title END AS pair_a,
+  CASE WHEN p1.title <= p2.title THEN p2.title ELSE p1.title END AS pair_b,
+  SUM(r.point) AS total_point
+FROM relation AS r
+INNER JOIN person AS p1 ON p1.id = r.master_person_id
+INNER JOIN person AS p2 ON p2.id = r.slave_person_id
+WHERE r.point <> 0
+  AND (p1.title IN (:titles) OR p2.title IN (:titles))
+GROUP BY
+  CASE WHEN p1.title <= p2.title THEN p1.title ELSE p2.title END,
+  CASE WHEN p1.title <= p2.title THEN p2.title ELSE p1.title END
+HAVING SUM(r.point) > :total_point_gt
+ORDER BY total_point DESC;
+```
+
+- **件数上限**: なし（`relations_aggregate` の `LIMIT 50` とは異なる）。
+- **インデックス**: `relation` 側は [ddl_postgres.sql](./ddl_postgres.sql) の `idx_relation_master_point`・`idx_relation_slave_master`。`person.title IN (...)` は中心が最大 10 名のため、プランナは `relation` 走査 + `person` 結合が主になりやすい。
+
+**4) しきい値 UI と再実行**
+
+- 初回の **「相関図を作成する」**: `total_point_gt = 1`（`DiagramTabPanel.tsx` の `DEFAULT_DIAGRAM_TOTAL_POINT_GT`）。
+- 図表示後の **「関連者を増やす」**: `total_point_gt` を **1 減らして** 同 API を再呼び出し（`total_point_gt > 0` のときのみ有効）。
+- **「関連者を減らす」**: `total_point_gt` を **1 増やして** 再呼び出し（表示中のペアが 1 件以上あるときのみ有効）。
+- いずれも **3)** と同じ SQL。応答の `pairs` で `rows` を置き換え、`center_titles` はリクエストどおり（Pydantic 正規化済み）が `members` に反映される。
+
+**手元 DB でエッジ候補を確認する例**
+
+`:t1`, `:t2` を中心人物の `person.title` に置き換える。初回 UI と同じく `total_point_gt = 1` のときは `HAVING SUM(r.point) > 1`。
+
+```sql
+SELECT
+  CASE WHEN p1.title <= p2.title THEN p1.title ELSE p2.title END AS person1,
+  CASE WHEN p1.title <= p2.title THEN p2.title ELSE p1.title END AS person2,
+  SUM(r.point) AS total_point
+FROM relation AS r
+JOIN person AS p1 ON p1.id = r.master_person_id
+JOIN person AS p2 ON p2.id = r.slave_person_id
+WHERE r.point <> 0
+  AND (p1.title IN (:t1, :t2) OR p2.title IN (:t1, :t2))
+GROUP BY 1, 2
+HAVING SUM(r.point) > 1
+ORDER BY total_point DESC;
+```
+
+中心 3 名以上のときは `IN` に `:t3`, … を足す。
 
 
 ### 5) 関係取得（主体者→関連者）
@@ -649,6 +772,94 @@ sequenceDiagram
     end
 ```
 
+#### 実行 SQL（関連者リストアップ）
+
+**❷ 主体者・関連者** の一覧は本エンドポイントのみを利用する（[frontend.md](./frontend.md)）。実装は `app.crud.relation.get_relation_aggregates_for_master` と `app.services.persons.list_person_relations_aggregate`。
+
+**前提**
+
+- `relation` は **有向**（`master_person_id` → `slave_person_id`）。無向の `OR` 結合は行わない。
+- **主体者** = パス `person_id` の人物。関連者は **主体者が master の forward 行**の `slave` のみ（相手が master で主体者が slave の行だけ存在する相手は、forward 行が無ければ一覧に出ない）。
+- **主体値** = forward の `point`、**関連値** = 逆方向行 `slave → master` の `point`（無ければ 0）、**合計値** = 両者の和。
+
+**1) 主体者の存在確認**
+
+```sql
+SELECT *
+FROM person
+WHERE id = :person_id;
+```
+
+存在しなければ **404**。
+
+**2) forward + reverse の取得（最大 50 件）**
+
+SQLAlchemy は `relation` を 2 回エイリアス（`fwd` / `rev`）して結合する。等価な PostgreSQL は次のとおり。
+
+```sql
+SELECT
+  fwd.id            AS forward_relation_id,
+  fwd.master_person_id,
+  fwd.slave_person_id,
+  fwd.point         AS forward_point,
+  rev.point         AS reverse_point
+FROM relation AS fwd
+LEFT JOIN relation AS rev
+  ON rev.master_person_id = fwd.slave_person_id
+ AND rev.slave_person_id = fwd.master_person_id
+WHERE fwd.master_person_id = :person_id
+ORDER BY fwd.point DESC, fwd.id ASC
+LIMIT 50;
+```
+
+- インデックス: `idx_relation_master_point`（`master_person_id`, `point DESC`, `id ASC`）、逆方向 JOIN 用 `idx_relation_slave_master`（`slave_person_id`, `master_person_id`）。DDL は [ddl_postgres.sql](./ddl_postgres.sql)。
+
+**3) アプリケーション層での `total_point` ソート**
+
+DB では **forward の `point` 降順**で先頭 50 件を切る。レスポンス直前に Python で次を計算し、**`total_point` 降順**に並べ替える（同順位のタイブレークは実装依存）。
+
+```text
+total_point = forward_point + COALESCE(reverse_point, 0)
+```
+
+**4) `has_relations` 用の付帯クエリ**
+
+各行の `master` / `slave` に `has_relations`（その `person.id` が **いずれかの** `relation.master_person_id` として存在するか）を付与する。実装は `app.crud.relation.person_ids_with_forward_relation`。
+
+```sql
+SELECT DISTINCT master_person_id
+FROM relation
+WHERE master_person_id IN (:id1, :id2, ...);
+```
+
+**5) 画面表示時の追加処理（SQL 外）**
+
+フロント（`usePrincipalDetailPhase`）は API 応答を受け取ったあと次を行う。詳細は [frontend.md](./frontend.md#関連者リストの表示順)。
+
+- 既定 **「関連値 0 は除外」**: `reverse_point = 0` の行を除く。
+- **`total_point` 降順**で並べ替え（API 返却順に依存しない）。
+- 最大 **100 件**まで表示（`WIKI_MAX_RELATED_DISPLAY`）。API は最大 50 件のため、通常は API 件数が上限。
+
+**手元 DB で画面と同じ上位を確認する例**
+
+`:person_id` を主体者の `person.id` に置き換える。
+
+```sql
+SELECT
+  p_slave.name,
+  fwd.point AS forward_point,
+  COALESCE(rev.point, 0) AS reverse_point,
+  fwd.point + COALESCE(rev.point, 0) AS total_point
+FROM relation AS fwd
+LEFT JOIN relation AS rev
+  ON rev.master_person_id = fwd.slave_person_id
+ AND rev.slave_person_id = fwd.master_person_id
+JOIN person AS p_slave ON p_slave.id = fwd.slave_person_id
+WHERE fwd.master_person_id = :person_id
+ORDER BY total_point DESC, fwd.point DESC;
+```
+
+画面で「関連値 0 は除外」がオンのときは `AND COALESCE(rev.point, 0) <> 0` を足す。
 
 
 ### 7) 人物判定（内部: `app.services.wiki.human.is_human_by_title`）
@@ -808,6 +1019,7 @@ sequenceDiagram
 
 ## 変更履歴
 
+- 2026-05-19: **相関図作成**の実行 SQL を [§4-3 実行 SQL（相関図作成）](#実行-sql相関図作成) に追記。正規化は HTTP では **422**（Pydantic）、しきい値 UI は **「関連者を増やす／減らす」** に実装を合わせて記述を修正。
 - 2026-05-17: Wikipedia リンク集計のノイズ節除外を **`脚注`・`出典`・`参考文献`・`関連項目`・`外部リンク`** に統一（wikitext / parse HTML / extract プレーンテキスト）。外部リンク最終見出し時の末尾 navbox 除去は従来どおり。
 - 2026-05-14: **`PersonOut` / `PersonSearchOut` の意味整理**: `has_relations` を **`relation` に主体としての行が存在するか** に変更し、**`is_executed_master`**（`executed_as_master` / `executed_as_master_at`）を追加。フロントの **❸ キャッシュ初回読み・「キャッシュ再取得」** は `has_relations` **および** `is_executed_master`（`isPrincipalRelationsCacheSource`）。❷「相関図に追加」等の主体者実行導線は `is_executed_master` を参照する。
 - 2026-05-14: **`POST /api/v1/person/resolve_wiki_masters`** を追加。Wikipedia 検索結果の各行（記事タイトル → canonical `Person.url`）と **主体者として実行済み**の `person` を一括突合し、❷「相関図に追加」を `GET /person/search` の件数・名前一致に依存させない。

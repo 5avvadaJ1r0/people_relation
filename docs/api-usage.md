@@ -57,9 +57,9 @@ Content-Type: application/json
 - `GET /api/v1/person/search?name=...`（保存済み人物の検索。`has_relations` は主体としての `relation` 有無、`is_executed_master` は `executed_as_master` が true のときのみ true）
 - `POST /api/v1/person/resolve_wiki_masters`（Wikipedia 検索各行の記事タイトルから canonical URL を組み立て、**主体者実行済み**の `person` を行ごとに返す。❷「相関図に追加」の主突合）
 - `GET /api/v1/person/search_executed_masters?name=...`（`executed_as_master = true` の人物のみ検索。❶ 主体者サジェスト・相関図タブ用）
-- `POST /api/v1/diagram/core_network`（中心人物 2〜10 名の **無向ペア集約**。リクエストに `total_point_gt` あり。レスポンスは相関図用エッジ一覧）
+- `POST /api/v1/diagram/core_network`（中心人物 2〜10 名の **無向ペア集約**。リクエストに `total_point_gt` あり。レスポンスは相関図用エッジ一覧。実行 SQL は [api.md](./api.md#実行-sql相関図作成)）
 - `GET /api/v1/person/{person_id}/relations`（主体者の関連者を取得。各 `master` / `slave` に `has_relations` / `is_executed_master` を含む）
-- `GET /api/v1/person/{person_id}/relations_aggregate`（forward / reverse を集約した関連者一覧。各人物に `has_relations` / `is_executed_master` を含む）
+- `GET /api/v1/person/{person_id}/relations_aggregate`（forward / reverse を集約した関連者一覧。❷ 関連者リストのデータ源。実行 SQL は [api.md](./api.md#実行-sql関連者リストアップ)）
 - `GET /api/v1/wiki/person_search_sse?q=...`（Wikipedia 検索 + 人物フィルタ、**SSE**）
 - `GET /api/v1/wiki/extract_relations_sse?title=...&max_related=...`（2-hop 抽出、**SSE**）
 
