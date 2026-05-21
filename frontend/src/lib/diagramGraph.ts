@@ -96,6 +96,47 @@ const buildGraph = (
 /** おおよその当たり判定半径（CSS のノードサイズに合わせた概算） */
 export const NODE_RADIUS = { core: 58, person: 48 } as const;
 
+/** レイアウト枠の半幅÷半高。相関図表示領域（横長矩形）に合わせる */
+const LAYOUT_FRAME_ASPECT = 1.55;
+
+const halfExtentsFromRadial = (r: number): { hw: number; hh: number } => {
+  const a = LAYOUT_FRAME_ASPECT;
+  const s = Math.sqrt(a);
+  return { hw: r * s, hh: r / s };
+};
+
+/** 中心から角度 θ の方向で、半幅 hw・半高 hh の矩形辺上の点 */
+const pointOnRectBoundary = (
+  centerX: number,
+  centerY: number,
+  hw: number,
+  hh: number,
+  theta: number,
+): { x: number; y: number } => {
+  const c = Math.cos(theta);
+  const s = Math.sin(theta);
+  const ax = Math.abs(c);
+  const as = Math.abs(s);
+  if (ax < 1e-9) {
+    return { x: centerX, y: centerY + (s >= 0 ? hh : -hh) };
+  }
+  if (as < 1e-9) {
+    return { x: centerX + (c >= 0 ? hw : -hw), y: centerY };
+  }
+  const t = Math.min(hw / ax, hh / as);
+  return { x: centerX + t * c, y: centerY + t * s };
+};
+
+const placeOnLayoutRect = (
+  centerX: number,
+  centerY: number,
+  radial: number,
+  theta: number,
+): { x: number; y: number } => {
+  const { hw, hh } = halfExtentsFromRadial(radial);
+  return pointOnRectBoundary(centerX, centerY, hw, hh, theta);
+};
+
 const layoutCoreRing = (
   centerX: number,
   centerY: number,
@@ -106,22 +147,13 @@ const layoutCoreRing = (
   const pos = new Map<string, { x: number; y: number }>();
   if (members.length === 2 && twoCoreLayout === "horizontal") {
     const [a, b] = members;
-    pos.set(a, {
-      x: centerX + coreRingR * Math.cos(Math.PI),
-      y: centerY + coreRingR * Math.sin(Math.PI),
-    });
-    pos.set(b, {
-      x: centerX + coreRingR * Math.cos(0),
-      y: centerY + coreRingR * Math.sin(0),
-    });
+    pos.set(a, placeOnLayoutRect(centerX, centerY, coreRingR, Math.PI));
+    pos.set(b, placeOnLayoutRect(centerX, centerY, coreRingR, 0));
     return pos;
   }
   members.forEach((name, i) => {
     const angle = (i / members.length) * Math.PI * 2 - Math.PI / 2;
-    pos.set(name, {
-      x: centerX + coreRingR * Math.cos(angle),
-      y: centerY + coreRingR * Math.sin(angle),
-    });
+    pos.set(name, placeOnLayoutRect(centerX, centerY, coreRingR, angle));
   });
   return pos;
 };
@@ -180,10 +212,7 @@ const layoutSingleCoreSatellites = (
   ordered.forEach((name, i) => {
     const theta = (n <= 1 ? 0 : i / n) * Math.PI * 2 - Math.PI / 2;
     const r = radialFromTie(coreTieStrength.get(name) ?? 0);
-    pos.set(name, {
-      x: centerX + r * Math.cos(theta),
-      y: centerY + r * Math.sin(theta),
-    });
+    pos.set(name, placeOnLayoutRect(centerX, centerY, r, theta));
   });
 };
 
@@ -254,10 +283,10 @@ const layoutSatelliteInitial = (
       const radial = outer - (t / maxT) * (outer - inner);
       const frac = no <= 1 ? 0 : i / (no - 1);
       const jitter = (frac - 0.5) * 40;
-      pos.set(name, {
-        x: centerX + (radial + jitter) * Math.cos(ang),
-        y: centerY + (radial + jitter) * Math.sin(ang),
-      });
+      pos.set(
+        name,
+        placeOnLayoutRect(centerX, centerY, radial + jitter, ang),
+      );
     });
     return;
   }
@@ -283,10 +312,7 @@ const layoutSatelliteInitial = (
     const delta = m <= 1 ? 0 : (idx / (m - 1) - 0.5) * 2 * sectorHalfWidth;
     const theta = baseAng + delta;
 
-    pos.set(name, {
-      x: centerX + r * Math.cos(theta),
-      y: centerY + r * Math.sin(theta),
-    });
+    pos.set(name, placeOnLayoutRect(centerX, centerY, r, theta));
   }
 
   const orphans: string[] = [];
@@ -310,10 +336,7 @@ const layoutSatelliteInitial = (
     const radial = outer - (t / maxT) * (outer - inner);
     const frac = no <= 1 ? 0 : i / (no - 1);
     const jitter = (frac - 0.5) * 40;
-    pos.set(name, {
-      x: centerX + (radial + jitter) * Math.cos(ang),
-      y: centerY + (radial + jitter) * Math.sin(ang),
-    });
+    pos.set(name, placeOnLayoutRect(centerX, centerY, radial + jitter, ang));
   });
 };
 
