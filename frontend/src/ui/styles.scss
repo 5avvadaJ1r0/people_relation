@@ -837,7 +837,7 @@ a {
   padding: 10px 14px;
   border-radius: 12px;
   font-weight: 800;
-  font-size: 0.85rem;
+  font-size: 16px;
   text-align: center;
   min-width: 108px;
   color: #f0f9ff;
@@ -858,17 +858,10 @@ a {
 .diagramNodePerson {
   padding: 6px 10px;
   border-radius: 8px;
-  font-size: 0.72rem;
+  font-size: 16px;
   text-align: center;
   max-width: 140px;
   box-sizing: border-box;
-}
-
-@media (max-width: $bp-bs-md-max) {
-  .diagramNodeCore,
-  .diagramNodePerson {
-    font-size: 16px;
-  }
 }
 
 .grid {
