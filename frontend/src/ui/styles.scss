@@ -322,6 +322,20 @@ a {
   justify-content: space-between;
   gap: 12px 16px;
   flex-wrap: wrap;
+
+  @media (max-width: $bp-bs-md-max) {
+    gap: 8px 6px;
+  }
+}
+
+.diagramFlowCardActions {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
 }
 
 .diagramFlowCardHeaderRight {
@@ -331,7 +345,12 @@ a {
   align-items: flex-start;
   justify-content: flex-end;
   gap: 12px 20px;
-  margin-left: auto;
+
+  @media (max-width: $bp-bs-md-max) {
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
 }
 
 .diagramTwoCoreLayoutBar {
@@ -384,31 +403,39 @@ a {
   }
 }
 
-.diagramThresholdBar {
+.diagramThresholdMeta {
   margin-top: 12px;
+  width: 100%;
+
+  @media (min-width: $bp-bs-md-min) {
+    margin-top: 0;
+    display: contents;
+  }
+}
+
+.diagramThresholdBar {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   flex-wrap: wrap;
   gap: 8px;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
 
-  @media (max-width: $bp-bs-md-max) {
-    flex-direction: column;
-    gap: 8px;
+  /* .detailMetaCheckboxLabel の flex-grow が縦方向に効き、ボタン手前に大きな余白になる */
+  .diagramPeerLinksCheckbox {
+    flex: 0 0 auto;
+    min-width: 0;
+    width: 100%;
+  }
+
+  @media (min-width: $bp-bs-md-min) {
+    grid-area: meta;
+    justify-self: start;
+    align-self: center;
+    flex-direction: row;
+    align-items: center;
     justify-content: flex-start;
-    align-items: flex-start;
-
-    /* .detailMetaCheckboxLabel の flex-grow が縦方向に効き、ボタン手前に大きな余白になる */
-    .diagramPeerLinksCheckbox {
-      flex: 0 0 auto;
-      min-width: 0;
-      width: 100%;
-    }
-
-    .diagramThresholdButtons {
-      width: 100%;
-    }
+    margin-top: 0;
   }
 }
 
@@ -444,10 +471,12 @@ a {
 }
 
 .diagramThresholdButtons {
+  display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  flex-shrink: 0;
 
-  button {
+  .diagramThresholdBtn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -469,6 +498,64 @@ a {
     justify-content: center;
     flex-wrap: wrap;
     text-align: center;
+  }
+
+  @media (max-width: $bp-bs-md-max) {
+    flex-wrap: nowrap;
+    gap: 6px;
+
+    .diagramThresholdBtnLabel {
+      display: none;
+    }
+
+    .diagramThresholdBtn,
+    .diagramShareBtn {
+      width: 36px;
+      min-width: 36px;
+      height: 36px;
+      padding: 0;
+      margin: 0;
+      gap: 0;
+      border-radius: 8px;
+      box-shadow: var(--shadow-sm);
+    }
+  }
+
+  @media (min-width: $bp-bs-md-min) {
+    grid-area: meta;
+    justify-self: end;
+    align-self: center;
+  }
+}
+
+/* PC: タイトル行としきい値メタ行をグリッドで再配置（ボタンは DOM 上は actions 内の1組のみ） */
+@media (min-width: $bp-bs-md-min) {
+  .diagramFlowCardHeader--withMeta {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title headerActions"
+      "meta meta";
+    gap: 12px 16px;
+    align-items: center;
+  }
+
+  .diagramFlowCardHeader--withMeta .diagramFlowCardTitleRow,
+  .diagramFlowCardHeader--withMeta .diagramFlowCardActions {
+    display: contents;
+  }
+
+  .diagramFlowCardHeader--withMeta
+    .diagramFlowCardTitleRow
+    > .diagramFlowSectionTitle {
+    grid-area: title;
+    margin: 0;
+  }
+
+  .diagramFlowCardHeader--withMeta .diagramFlowCardHeaderRight {
+    grid-area: headerActions;
+    justify-self: end;
+    margin-left: 0;
   }
 }
 
@@ -656,7 +743,8 @@ a {
   border-radius: 8px;
 
   @media (max-width: $bp-bs-md-max) {
-    height: 700px;
+    /* しきい値バーをアイコンのみにした分、相関図の表示高さを確保 */
+    height: min(78dvh, 840px);
 
     .react-flow__minimap {
       display: none;

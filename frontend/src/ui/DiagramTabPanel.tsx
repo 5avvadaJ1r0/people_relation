@@ -136,6 +136,98 @@ const IconArrowUpFromBracket = () => (
   </svg>
 );
 
+type DiagramThresholdButtonsProps = {
+  busy: boolean;
+  canExpandRelated: boolean;
+  canShrinkRelated: boolean;
+  hasDiagram: boolean;
+  totalPointGt: number;
+  allRowsEmpty: boolean;
+  onLoadWithGt: (gt: number) => void;
+  onFitDiagramViewport: () => void;
+  webShareImageSupported: boolean;
+  diagramShareReady: boolean;
+  diagramShareBusy: boolean;
+  onShareDiagramImage: () => void;
+};
+
+const DiagramThresholdButtons = ({
+  busy,
+  canExpandRelated,
+  canShrinkRelated,
+  hasDiagram,
+  totalPointGt,
+  allRowsEmpty,
+  onLoadWithGt,
+  onFitDiagramViewport,
+  webShareImageSupported,
+  diagramShareReady,
+  diagramShareBusy,
+  onShareDiagramImage,
+}: DiagramThresholdButtonsProps) => (
+  <div className="diagramThresholdButtons">
+    <button
+      type="button"
+      className="diagramThresholdBtn"
+      disabled={busy || !canExpandRelated}
+      aria-label="関連者を増やす"
+      title={
+        totalPointGt <= 0
+          ? "これ以上しきい値を下げられません（n = 0）"
+          : "しきい値を下げて関連者を増やす"
+      }
+      onClick={() => void onLoadWithGt(totalPointGt - 1)}
+    >
+      <IconCirclePlus />
+      <span className="diagramThresholdBtnLabel">関連者を増やす</span>
+    </button>
+    <button
+      type="button"
+      className="diagramThresholdBtn"
+      disabled={busy || !canShrinkRelated}
+      aria-label="関連者を減らす"
+      title={
+        allRowsEmpty
+          ? "表示中のペアがないため、これ以上しきい値を上げられません"
+          : "しきい値を上げて関連者を減らす"
+      }
+      onClick={() => void onLoadWithGt(totalPointGt + 1)}
+    >
+      <IconCircleMinus />
+      <span className="diagramThresholdBtnLabel">関連者を減らす</span>
+    </button>
+    <button
+      type="button"
+      className="diagramThresholdBtn"
+      disabled={busy || !hasDiagram}
+      aria-label="表示サイズ最適化"
+      title="ズームと位置を調整し、相関図全体を表示領域に収めます"
+      onClick={onFitDiagramViewport}
+    >
+      <IconFitDisplay />
+      <span className="diagramThresholdBtnLabel">表示サイズ最適化</span>
+    </button>
+    {hasDiagram && webShareImageSupported ? (
+      <button
+        type="button"
+        className="diagramThresholdBtn diagramShareBtn"
+        disabled={busy || !diagramShareReady || diagramShareBusy}
+        aria-label={
+          diagramShareBusy ? "相関図を共有（準備中）" : "相関図を共有"
+        }
+        aria-busy={diagramShareBusy}
+        title="相関図を画像で共有"
+        onClick={() => void onShareDiagramImage()}
+      >
+        <IconArrowUpFromBracket />
+        <span className="diagramThresholdBtnLabel">
+          {diagramShareBusy ? "準備中…" : "相関図を共有"}
+        </span>
+      </button>
+    ) : null}
+  </div>
+);
+
 export type DiagramTabPanelProps = {
   center: ApiPerson[];
   setCenter: Dispatch<SetStateAction<ApiPerson[]>>;
@@ -621,12 +713,35 @@ export const DiagramTabPanel = ({
         }
       >
         <div className="card diagramFlowCard">
-          <div className="diagramFlowCardHeader">
+          <div
+            className={
+              members.length > 0
+                ? "diagramFlowCardHeader diagramFlowCardHeader--withMeta"
+                : "diagramFlowCardHeader"
+            }
+          >
             <div className="diagramFlowCardTitleRow">
               <h2 className="diagramFlowSectionTitle diagramCardLeadTitle">
                 相関図
               </h2>
-              <div className="diagramFlowCardHeaderRight">
+              <div className="diagramFlowCardActions">
+                {members.length > 0 ? (
+                  <DiagramThresholdButtons
+                    busy={busy}
+                    canExpandRelated={canExpandRelated}
+                    canShrinkRelated={canShrinkRelated}
+                    hasDiagram={hasDiagram}
+                    totalPointGt={totalPointGt}
+                    allRowsEmpty={allRows.length === 0}
+                    onLoadWithGt={(gt) => void loadDiagramWithGt(gt)}
+                    onFitDiagramViewport={onFitDiagramViewport}
+                    webShareImageSupported={webShareImageSupported}
+                    diagramShareReady={diagramShareReady}
+                    diagramShareBusy={diagramShareBusy}
+                    onShareDiagramImage={onShareDiagramImage}
+                  />
+                ) : null}
+                <div className="diagramFlowCardHeaderRight">
                 {diagramFlowExpanded ? (
                   <button
                     type="button"
@@ -683,93 +798,44 @@ export const DiagramTabPanel = ({
                     </div>
                   </div>
               ) : null}
+                </div>
               </div>
             </div>
             {members.length > 0 ? (
-              <div className="diagramThresholdBar">
-                {diagramShareError ? (
-                  <div className="diagramShareError diagramThresholdShareError">
-                    {diagramShareError}
+              <div className="diagramThresholdMeta">
+                <div className="diagramThresholdBar">
+                  {diagramShareError ? (
+                    <div className="diagramShareError diagramThresholdShareError">
+                      {diagramShareError}
+                    </div>
+                  ) : null}
+                  <div className="diagramThresholdLabel">
+                    関連値の合計が{" "}
+                    <strong className="diagramThresholdN">{totalPointGt}</strong>{" "}
+                    より大きい関係だけを表示しています。
+                    {!canBuild ? (
+                      <span className="diagramThresholdWarn">
+                        {" "}
+                        中心人物を {MIN_DIAGRAM_CENTER}〜{MAX_DIAGRAM_CENTER}{" "}
+                        名に戻すと、下のボタンで再取得できます。
+                      </span>
+                    ) : null}
                   </div>
-                ) : null}
-                <div className="diagramThresholdLabel">
-                  関連値の合計が{" "}
-                  <strong className="diagramThresholdN">{totalPointGt}</strong>{" "}
-                  より大きい関係だけを表示しています。
-                  {!canBuild ? (
-                    <span className="diagramThresholdWarn">
-                      {" "}
-                      中心人物を {MIN_DIAGRAM_CENTER}〜{MAX_DIAGRAM_CENTER}{" "}
-                      名に戻すと、下のボタンで再取得できます。
-                    </span>
+                  <label className="detailMetaCheckboxLabel diagramPeerLinksCheckbox">
+                    <input
+                      type="checkbox"
+                      checked={showPeerLinks}
+                      disabled={busy}
+                      onChange={(e) => setShowPeerLinks(e.target.checked)}
+                    />
+                    <span>関連者同士のリンクを表示</span>
+                  </label>
+                  {hasDiagram && !webShareImageSupported ? (
+                    <div className="diagramShareUnsupported diagramThresholdShareUnsupported">
+                      この環境では Web Share API（画像）が使えません。
+                    </div>
                   ) : null}
                 </div>
-                <label className="detailMetaCheckboxLabel diagramPeerLinksCheckbox">
-                  <input
-                    type="checkbox"
-                    checked={showPeerLinks}
-                    disabled={busy}
-                    onChange={(e) => setShowPeerLinks(e.target.checked)}
-                  />
-                  <span>関連者同士のリンクを表示</span>
-                </label>
-                <div className="row diagramThresholdButtons">
-                  <button
-                    type="button"
-                    disabled={busy || !canExpandRelated}
-                    title={
-                      totalPointGt <= 0
-                        ? "これ以上しきい値を下げられません（n = 0）"
-                        : "しきい値を下げて関連者を増やす"
-                    }
-                    onClick={() => void loadDiagramWithGt(totalPointGt - 1)}
-                  >
-                    <IconCirclePlus />
-                    関連者を増やす
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy || !canShrinkRelated}
-                    title={
-                      allRows.length === 0
-                        ? "表示中のペアがないため、これ以上しきい値を上げられません"
-                        : "しきい値を上げて関連者を減らす"
-                    }
-                    onClick={() => void loadDiagramWithGt(totalPointGt + 1)}
-                  >
-                    <IconCircleMinus />
-                    関連者を減らす
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy || !hasDiagram}
-                    title="ズームと位置を調整し、相関図全体を表示領域に収めます"
-                    onClick={onFitDiagramViewport}
-                  >
-                    <IconFitDisplay />
-                    表示サイズ最適化
-                  </button>
-                  {hasDiagram && webShareImageSupported ? (
-                    <button
-                      type="button"
-                      className="diagramShareBtn"
-                      disabled={
-                        busy ||
-                        !diagramShareReady ||
-                        diagramShareBusy
-                      }
-                      onClick={() => void onShareDiagramImage()}
-                    >
-                      <IconArrowUpFromBracket />
-                      {diagramShareBusy ? "準備中…" : "相関図を共有"}
-                    </button>
-                  ) : null}
-                </div>
-                {hasDiagram && !webShareImageSupported ? (
-                  <div className="diagramShareUnsupported diagramThresholdShareUnsupported">
-                    この環境では Web Share API（画像）が使えません。
-                  </div>
-                ) : null}
               </div>
             ) : null}
           </div>
