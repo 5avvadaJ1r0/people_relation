@@ -96,11 +96,33 @@ const buildGraph = (
 /** おおよその当たり判定半径（CSS のノードサイズに合わせた概算） */
 export const NODE_RADIUS = { core: 58, person: 48 } as const;
 
-/** レイアウト枠の半幅÷半高。相関図表示領域（横長矩形）に合わせる */
-const LAYOUT_FRAME_ASPECT = 1.55;
+/** レイアウト枠の半幅÷半高（PC 横長表示領域向けの既定） */
+export const LAYOUT_FRAME_ASPECT_DEFAULT = 1.55;
 
-const halfExtentsFromRadial = (r: number): { hw: number; hh: number } => {
-  const a = LAYOUT_FRAME_ASPECT;
+/** 極端な縦長・横長での配置崩れを抑える */
+export const LAYOUT_FRAME_ASPECT_MIN = 0.42;
+export const LAYOUT_FRAME_ASPECT_MAX = 2.2;
+
+/** 表示領域の幅÷高さからレイアウト枠のアスペクト比を決める（SP 縦長でも上下の余白を抑える） */
+export const resolveLayoutFrameAspect = (
+  width: number,
+  height: number,
+  fallback = LAYOUT_FRAME_ASPECT_DEFAULT,
+): number => {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return fallback;
+  }
+  return Math.max(
+    LAYOUT_FRAME_ASPECT_MIN,
+    Math.min(LAYOUT_FRAME_ASPECT_MAX, width / height),
+  );
+};
+
+const halfExtentsFromRadial = (
+  r: number,
+  layoutFrameAspect: number,
+): { hw: number; hh: number } => {
+  const a = layoutFrameAspect;
   const s = Math.sqrt(a);
   return { hw: r * s, hh: r / s };
 };
@@ -132,8 +154,9 @@ const placeOnLayoutRect = (
   centerY: number,
   radial: number,
   theta: number,
+  layoutFrameAspect: number,
 ): { x: number; y: number } => {
-  const { hw, hh } = halfExtentsFromRadial(radial);
+  const { hw, hh } = halfExtentsFromRadial(radial, layoutFrameAspect);
   return pointOnRectBoundary(centerX, centerY, hw, hh, theta);
 };
 
@@ -142,18 +165,25 @@ const layoutCoreRing = (
   centerY: number,
   coreRingR: number,
   members: readonly string[],
+  layoutFrameAspect: number,
   twoCoreLayout?: TwoCoreLayout,
 ): Map<string, { x: number; y: number }> => {
   const pos = new Map<string, { x: number; y: number }>();
   if (members.length === 2 && twoCoreLayout === "horizontal") {
     const [a, b] = members;
-    pos.set(a, placeOnLayoutRect(centerX, centerY, coreRingR, Math.PI));
-    pos.set(b, placeOnLayoutRect(centerX, centerY, coreRingR, 0));
+    pos.set(
+      a,
+      placeOnLayoutRect(centerX, centerY, coreRingR, Math.PI, layoutFrameAspect),
+    );
+    pos.set(b, placeOnLayoutRect(centerX, centerY, coreRingR, 0, layoutFrameAspect));
     return pos;
   }
   members.forEach((name, i) => {
     const angle = (i / members.length) * Math.PI * 2 - Math.PI / 2;
-    pos.set(name, placeOnLayoutRect(centerX, centerY, coreRingR, angle));
+    pos.set(
+      name,
+      placeOnLayoutRect(centerX, centerY, coreRingR, angle, layoutFrameAspect),
+    );
   });
   return pos;
 };
@@ -180,6 +210,7 @@ const layoutSingleCoreSatellites = (
   coreTieStrength: Map<string, number>,
   centerX: number,
   centerY: number,
+  layoutFrameAspect: number,
 ) => {
   const rInner = 140;
   const rOuter = 640;
@@ -212,7 +243,7 @@ const layoutSingleCoreSatellites = (
   ordered.forEach((name, i) => {
     const theta = (n <= 1 ? 0 : i / n) * Math.PI * 2 - Math.PI / 2;
     const r = radialFromTie(coreTieStrength.get(name) ?? 0);
-    pos.set(name, placeOnLayoutRect(centerX, centerY, r, theta));
+    pos.set(name, placeOnLayoutRect(centerX, centerY, r, theta, layoutFrameAspect));
   });
 };
 
@@ -226,6 +257,7 @@ const layoutSatelliteInitial = (
   centerY: number,
   coreSet: Set<string>,
   members: readonly string[],
+  layoutFrameAspect: number,
 ) => {
   const satellites: string[] = [];
   for (const name of people) {
@@ -260,6 +292,7 @@ const layoutSatelliteInitial = (
       coreTieStrength,
       centerX,
       centerY,
+      layoutFrameAspect,
     );
     const placed = new Set(coreSatellites);
     const orphans: string[] = [];
@@ -285,7 +318,7 @@ const layoutSatelliteInitial = (
       const jitter = (frac - 0.5) * 40;
       pos.set(
         name,
-        placeOnLayoutRect(centerX, centerY, radial + jitter, ang),
+        placeOnLayoutRect(centerX, centerY, radial + jitter, ang, layoutFrameAspect),
       );
     });
     return;
@@ -312,7 +345,7 @@ const layoutSatelliteInitial = (
     const delta = m <= 1 ? 0 : (idx / (m - 1) - 0.5) * 2 * sectorHalfWidth;
     const theta = baseAng + delta;
 
-    pos.set(name, placeOnLayoutRect(centerX, centerY, r, theta));
+    pos.set(name, placeOnLayoutRect(centerX, centerY, r, theta, layoutFrameAspect));
   }
 
   const orphans: string[] = [];
@@ -336,7 +369,10 @@ const layoutSatelliteInitial = (
     const radial = outer - (t / maxT) * (outer - inner);
     const frac = no <= 1 ? 0 : i / (no - 1);
     const jitter = (frac - 0.5) * 40;
-    pos.set(name, placeOnLayoutRect(centerX, centerY, radial + jitter, ang));
+    pos.set(
+      name,
+      placeOnLayoutRect(centerX, centerY, radial + jitter, ang, layoutFrameAspect),
+    );
   });
 };
 
@@ -422,6 +458,7 @@ const layoutNodes = (
   coreDistinctCount: Map<string, number>,
   members: readonly string[],
   coreSet: Set<string>,
+  layoutFrameAspect: number,
   twoCoreLayout?: TwoCoreLayout,
 ): Map<string, { x: number; y: number }> => {
   const centerX = 520;
@@ -437,6 +474,7 @@ const layoutNodes = (
       centerY,
       coreRingR,
       members,
+      layoutFrameAspect,
       members.length === 2 ? twoCoreLayout : undefined,
     ).forEach((p, id) => pos.set(id, p));
   }
@@ -450,6 +488,7 @@ const layoutNodes = (
     centerY,
     coreSet,
     members,
+    layoutFrameAspect,
   );
 
   const initial = new Map(pos);
@@ -550,9 +589,15 @@ export const tieHeatStyle = (heat01: number): CSSProperties => {
 export const buildDiagramNodesAndEdges = (
   members: readonly string[],
   rows: DiagramRow[],
-  opts?: { twoCoreLayout?: TwoCoreLayout },
+  opts?: {
+    twoCoreLayout?: TwoCoreLayout;
+    /** 表示領域の幅÷高。未指定時は PC 横長向け既定 */
+    layoutFrameAspect?: number;
+  },
 ): { nodes: Node[]; edges: Edge[] } => {
   const coreSet = new Set(members);
+  const layoutFrameAspect =
+    opts?.layoutFrameAspect ?? LAYOUT_FRAME_ASPECT_DEFAULT;
   const { people, primaryCore, rows: graphRows, coreTieStrength, coreDistinctCount } =
     buildGraph(rows, coreSet, members);
   const positions = layoutNodes(
@@ -562,6 +607,7 @@ export const buildDiagramNodesAndEdges = (
     coreDistinctCount,
     members,
     coreSet,
+    layoutFrameAspect,
     opts?.twoCoreLayout,
   );
   const maxPoint = Math.max(1, ...rows.map((r) => r.points));

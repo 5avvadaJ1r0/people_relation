@@ -724,7 +724,7 @@ export const DiagramTabPanel = ({
               <h2 className="diagramFlowSectionTitle diagramCardLeadTitle">
                 相関図
               </h2>
-              <div className="diagramFlowCardActions">
+              <div className="diagramFlowCardToolbar">
                 {members.length > 0 ? (
                   <DiagramThresholdButtons
                     busy={busy}

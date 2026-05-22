@@ -6,6 +6,7 @@ import {
   useMemo,
   memo,
   useRef,
+  useState,
   type MutableRefObject,
 } from "react";
 import {
@@ -26,6 +27,8 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   buildDiagramNodesAndEdges,
+  LAYOUT_FRAME_ASPECT_DEFAULT,
+  resolveLayoutFrameAspect,
   tieHeatStyle,
   type DiagramRow,
   type TwoCoreLayout,
@@ -62,12 +65,14 @@ const CorrelationDiagramShareBind = ({
   members,
   rows,
   twoCoreLayout,
+  layoutFrameAspect,
   innerShareApiRef,
   onDiagramShareReadyChange,
 }: {
   members: readonly string[];
   rows: DiagramRow[];
   twoCoreLayout: TwoCoreLayout;
+  layoutFrameAspect: number;
   innerShareApiRef: MutableRefObject<InnerShareApi | null>;
   onDiagramShareReadyChange?: (ready: boolean) => void;
 }) => {
@@ -136,6 +141,7 @@ const CorrelationDiagramShareBind = ({
     members,
     rows,
     twoCoreLayout,
+    layoutFrameAspect,
     rf,
     onDiagramShareReadyChange,
   ]);
@@ -288,12 +294,32 @@ export const CorrelationDiagramView = forwardRef<
 ) {
   const innerShareApiRef = useRef<InnerShareApi | null>(null);
   const fitViewActionRef = useRef<(() => void) | null>(null);
+  const diagramFlowWrapRef = useRef<HTMLDivElement | null>(null);
+  const [layoutFrameAspect, setLayoutFrameAspect] = useState(
+    LAYOUT_FRAME_ASPECT_DEFAULT,
+  );
+
+  useLayoutEffect(() => {
+    const el = diagramFlowWrapRef.current;
+    if (!el) return;
+
+    const updateAspect = () => {
+      const { width, height } = el.getBoundingClientRect();
+      setLayoutFrameAspect(resolveLayoutFrameAspect(width, height));
+    };
+
+    updateAspect();
+    const ro = new ResizeObserver(updateAspect);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const layoutOpt = useMemo(
-    () =>
-      members.length === 2
-        ? { twoCoreLayout: twoCoreLayout }
-        : undefined,
-    [members.length, twoCoreLayout],
+    () => ({
+      layoutFrameAspect,
+      ...(members.length === 2 ? { twoCoreLayout } : {}),
+    }),
+    [members.length, twoCoreLayout, layoutFrameAspect],
   );
 
   const built = useMemo(
@@ -361,11 +387,11 @@ export const CorrelationDiagramView = forwardRef<
     const rowSig = rows
       .map((r) => `${r.a}\u001f${r.b}\u001f${r.points}`)
       .join("\u001e");
-    return `${twoCoreLayout}\u0000${members.join("\u0001")}\u0000${rowSig}`;
-  }, [members, rows, twoCoreLayout]);
+    return `${twoCoreLayout}\u0000${layoutFrameAspect}\u0000${members.join("\u0001")}\u0000${rowSig}`;
+  }, [members, rows, twoCoreLayout, layoutFrameAspect]);
 
   return (
-    <div className="diagramFlowWrap">
+    <div className="diagramFlowWrap" ref={diagramFlowWrapRef}>
       {empty ? (
         <div className="diagramFlowEmpty">相関図はまだありません。</div>
       ) : (
@@ -388,6 +414,7 @@ export const CorrelationDiagramView = forwardRef<
             members={members}
             rows={rows}
             twoCoreLayout={twoCoreLayout}
+            layoutFrameAspect={layoutFrameAspect}
             innerShareApiRef={innerShareApiRef}
             onDiagramShareReadyChange={onDiagramShareReadyChange}
           />

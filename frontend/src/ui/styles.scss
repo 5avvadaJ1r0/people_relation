@@ -328,7 +328,7 @@ a {
   }
 }
 
-.diagramFlowCardActions {
+.diagramFlowCardToolbar {
   display: inline-flex;
   flex-direction: row;
   flex-wrap: nowrap;
@@ -342,12 +342,11 @@ a {
   display: inline-flex;
   flex-direction: row;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-end;
   gap: 12px 20px;
 
   @media (max-width: $bp-bs-md-max) {
-    align-items: center;
     gap: 6px;
     flex-wrap: nowrap;
   }
@@ -409,7 +408,6 @@ a {
 
   @media (min-width: $bp-bs-md-min) {
     margin-top: 0;
-    display: contents;
   }
 }
 
@@ -429,13 +427,12 @@ a {
   }
 
   @media (min-width: $bp-bs-md-min) {
-    grid-area: meta;
-    justify-self: start;
-    align-self: center;
+    flex: 1 1 auto;
     flex-direction: row;
     align-items: center;
     justify-content: flex-start;
     margin-top: 0;
+    min-width: 0;
   }
 }
 
@@ -521,41 +518,62 @@ a {
     }
   }
 
-  @media (min-width: $bp-bs-md-min) {
-    grid-area: meta;
-    justify-self: end;
-    align-self: center;
-  }
 }
 
-/* PC: タイトル行としきい値メタ行をグリッドで再配置（ボタンは DOM 上は actions 内の1組のみ） */
+/* PC: 操作ボタン・全画面・縦横をツールバー1行で同じ高さに揃える（しきい値メタは下段） */
 @media (min-width: $bp-bs-md-min) {
   .diagramFlowCardHeader--withMeta {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "title headerActions"
-      "meta meta";
-    gap: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .diagramFlowCardHeader--withMeta .diagramFlowCardTitleRow {
+    flex-wrap: nowrap;
     align-items: center;
+    width: 100%;
   }
 
-  .diagramFlowCardHeader--withMeta .diagramFlowCardTitleRow,
-  .diagramFlowCardHeader--withMeta .diagramFlowCardActions {
-    display: contents;
+  .diagramFlowCardHeader--withMeta .diagramFlowCardToolbar {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
   }
 
-  .diagramFlowCardHeader--withMeta
-    .diagramFlowCardTitleRow
-    > .diagramFlowSectionTitle {
-    grid-area: title;
+  .diagramFlowCardHeader--withMeta .diagramThresholdButtons {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .diagramFlowCardHeader--withMeta .diagramThresholdButtons .diagramThresholdBtn,
+  .diagramFlowCardHeader--withMeta .diagramThresholdButtons .diagramShareBtn {
+    box-sizing: border-box;
+    height: 40px;
+    min-height: 40px;
+    padding: 0 12px;
     margin: 0;
+    flex-wrap: nowrap;
+
+    .diagramThresholdBtnLabel {
+      white-space: nowrap;
+    }
   }
 
-  .diagramFlowCardHeader--withMeta .diagramFlowCardHeaderRight {
-    grid-area: headerActions;
-    justify-self: end;
-    margin-left: 0;
+  .diagramFlowCardHeader--withMeta .diagramThresholdMeta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .diagramFlowCardHeader--withMeta .diagramPeerLinksCheckbox {
+    flex: 0 1 auto;
+    width: auto;
   }
 }
 
