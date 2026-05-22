@@ -864,6 +864,13 @@ a {
   box-sizing: border-box;
 }
 
+@media (max-width: $bp-bs-md-max) {
+  .diagramNodeCore,
+  .diagramNodePerson {
+    font-size: 16px;
+  }
+}
+
 .grid {
   display: grid;
   grid-template-columns: 420px 1fr;
