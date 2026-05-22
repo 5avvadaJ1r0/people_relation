@@ -195,6 +195,65 @@ a {
   }
 }
 
+.diagramFlowSectionExpanded {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  padding: 12px 14px;
+  gap: 8px;
+  background: var(--bg);
+  box-sizing: border-box;
+
+  .diagramFlowCard {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+  }
+
+  .diagramFlowWrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+
+    @media (max-width: $bp-bs-md-max) {
+      height: auto;
+    }
+  }
+}
+
+.diagramFlowViewportBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+
+  &:hover:not(:disabled) {
+    color: var(--text);
+    border-color: rgba(17, 24, 39, 0.18);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
 .diagramControlError {
   margin: 0;
 }
@@ -338,7 +397,18 @@ a {
     flex-direction: column;
     gap: 8px;
     justify-content: flex-start;
-    align-items: flex-start
+    align-items: flex-start;
+
+    /* .detailMetaCheckboxLabel の flex-grow が縦方向に効き、ボタン手前に大きな余白になる */
+    .diagramPeerLinksCheckbox {
+      flex: 0 0 auto;
+      min-width: 0;
+      width: 100%;
+    }
+
+    .diagramThresholdButtons {
+      width: 100%;
+    }
   }
 }
 

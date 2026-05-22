@@ -87,6 +87,41 @@ const IconFitDisplay = () => (
   </svg>
 );
 
+const IconExpand = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={18}
+    height={18}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+  </svg>
+);
+
+const IconCircleXmark = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={18}
+    height={18}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <circle cx="12" cy="12" r="10" />
+    <path d="m15 9-6 6M9 9l6 6" />
+  </svg>
+);
+
 /** Font Awesome Solid「arrow-up-from-bracket」相当（Font Awesome Free 6.5.2 / CC BY 4.0） */
 const IconArrowUpFromBracket = () => (
   <svg
@@ -130,6 +165,7 @@ export const DiagramTabPanel = ({
   const [totalPointGt, setTotalPointGt] = useState(DEFAULT_DIAGRAM_TOTAL_POINT_GT);
   /** 中心 2 名の相関図でのみ利用（縦＝上・下 / 横＝左・右） */
   const [twoCoreLayout, setTwoCoreLayout] = useState<TwoCoreLayout>("vertical");
+  const [diagramFlowExpanded, setDiagramFlowExpanded] = useState(false);
   const queryInputRef = useRef<HTMLInputElement | null>(null);
   const diagramViewRef = useRef<CorrelationDiagramViewHandle>(null);
   const [diagramShareReady, setDiagramShareReady] = useState(false);
@@ -292,12 +328,48 @@ export const DiagramTabPanel = ({
     diagramViewRef.current?.fitDisplayToViewport();
   }, []);
 
+  const onExpandDiagramFlow = useCallback(() => {
+    setDiagramFlowExpanded(true);
+  }, []);
+
+  const onCollapseDiagramFlow = useCallback(() => {
+    setDiagramFlowExpanded(false);
+  }, []);
+
   useEffect(() => {
     if (!hasDiagram) {
       setDiagramShareReady(false);
       setDiagramShareError(null);
     }
   }, [hasDiagram]);
+
+  useEffect(() => {
+    if (!diagramFlowExpanded) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [diagramFlowExpanded]);
+
+  useEffect(() => {
+    if (!diagramFlowExpanded) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDiagramFlowExpanded(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [diagramFlowExpanded]);
+
+  const diagramFlowExpandedEverRef = useRef(false);
+  useEffect(() => {
+    if (!diagramFlowExpandedEverRef.current && !diagramFlowExpanded) return;
+    diagramFlowExpandedEverRef.current = true;
+    const t = window.setTimeout(() => {
+      diagramViewRef.current?.fitDisplayToViewport();
+    }, diagramFlowExpanded ? 450 : 120);
+    return () => clearTimeout(t);
+  }, [diagramFlowExpanded]);
 
   return (
     <div className="diagramTabGrid">
@@ -541,15 +613,42 @@ export const DiagramTabPanel = ({
         </div>
       </div>
 
-      <div className="diagramFlowSection">
+      <div
+        className={
+          diagramFlowExpanded
+            ? "diagramFlowSection diagramFlowSectionExpanded"
+            : "diagramFlowSection"
+        }
+      >
         <div className="card diagramFlowCard">
           <div className="diagramFlowCardHeader">
             <div className="diagramFlowCardTitleRow">
               <h2 className="diagramFlowSectionTitle diagramCardLeadTitle">
                 相関図
               </h2>
+              <div className="diagramFlowCardHeaderRight">
+                {diagramFlowExpanded ? (
+                  <button
+                    type="button"
+                    className="diagramFlowViewportBtn"
+                    aria-label="全画面表示を終了"
+                    title="全画面表示を終了"
+                    onClick={onCollapseDiagramFlow}
+                  >
+                    <IconCircleXmark />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="diagramFlowViewportBtn"
+                    aria-label="相関図を画面いっぱいに表示"
+                    title="相関図を画面いっぱいに表示"
+                    onClick={onExpandDiagramFlow}
+                  >
+                    <IconExpand />
+                  </button>
+                )}
               {members.length === 2 ? (
-                <div className="diagramFlowCardHeaderRight">
                   <div
                     className="diagramTwoCoreLayoutBar"
                     role="group"
@@ -583,8 +682,8 @@ export const DiagramTabPanel = ({
                       </button>
                     </div>
                   </div>
-                </div>
               ) : null}
+              </div>
             </div>
             {members.length > 0 ? (
               <div className="diagramThresholdBar">
