@@ -588,6 +588,12 @@ a {
   position: relative;
 }
 
+/* サジェストが下の ❷ カードに隠れてホイール・タッチが届かないのを防ぐ */
+.principalSearchCard.principalSuggestPanelOpen {
+  position: relative;
+  z-index: 50;
+}
+
 .principalSuggestOptionSub {
   margin-left: 6px;
   font-size: 12px;
@@ -620,6 +626,8 @@ a {
   top: calc(100% + 6px);
   max-height: min(280px, 42vh);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: #ffffff;

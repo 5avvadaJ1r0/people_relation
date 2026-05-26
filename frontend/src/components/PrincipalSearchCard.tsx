@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { ChangeEvent, KeyboardEvent } from "react";
 import type { PeopleRelationListSearchPanelModel } from "../peopleRelationAppModel";
 
@@ -23,6 +24,18 @@ export const PrincipalSearchCard = ({
     clearQuery,
     onSelectPerson,
   } = listSearch;
+
+  const suggestListboxRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!suggestPanelOpen || highlightIdx < 0) return;
+    const active = matches[highlightIdx];
+    if (!active) return;
+    const opt = suggestListboxRef.current?.querySelector<HTMLElement>(
+      `#principal-suggest-opt-${active.id}`,
+    );
+    opt?.scrollIntoView({ block: "nearest" });
+  }, [highlightIdx, matches, suggestPanelOpen]);
 
   const handleQueryChange = (e: ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
@@ -60,7 +73,13 @@ export const PrincipalSearchCard = ({
   };
 
   return (
-    <div className="card principalSearchCard">
+    <div
+      className={
+        suggestPanelOpen
+          ? "card principalSearchCard principalSuggestPanelOpen"
+          : "card principalSearchCard"
+      }
+    >
       <h2>❶ 主体者入力</h2>
       <div className="principalSuggestWrap diagramSuggestWrap">
         <div className="textInputWrap">
@@ -116,9 +135,11 @@ export const PrincipalSearchCard = ({
 
         {suggestPanelOpen ? (
           <div
+            ref={suggestListboxRef}
             id="principal-suggest-listbox"
             className="diagramSuggestPanel"
             role="listbox"
+            onWheel={(e) => e.stopPropagation()}
           >
             {matches.length > 0 ? (
               matches.map((p, idx) => (
