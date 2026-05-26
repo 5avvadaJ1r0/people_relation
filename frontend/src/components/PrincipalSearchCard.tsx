@@ -72,14 +72,12 @@ export const PrincipalSearchCard = ({
     }
   };
 
+  const cardClassName = suggestPanelOpen
+    ? "card principalSearchCard principalSuggestPanelOpen"
+    : "card principalSearchCard";
+
   return (
-    <div
-      className={
-        suggestPanelOpen
-          ? "card principalSearchCard principalSuggestPanelOpen"
-          : "card principalSearchCard"
-      }
-    >
+    <div className={cardClassName}>
       <h2>❶ 主体者入力</h2>
       <div className="principalSuggestWrap diagramSuggestWrap">
         <div className="textInputWrap">
