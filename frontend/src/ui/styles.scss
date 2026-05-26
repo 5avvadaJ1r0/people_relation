@@ -8,6 +8,10 @@ $bp-bs-md-min: 768px;
 // `md` applies to small devices (landscape phones, less than 768px) → @include media-breakpoint-down(md)
 $bp-bs-md-max: 767.98px;
 
+// サジェストパネルと重なり順（diagramSuggestPanel は図タブ・リストタブ共通）
+$z-index-diagram-suggest-panel: 30;
+$z-index-principal-suggest-card-open: 50;
+
 :root {
   /* メディアクエリ閾値（SCSS 変数と同期。JS や DevTools 参照用） */
   --breakpoint-layout-compact-max: #{$bp-layout-compact-max};
@@ -588,6 +592,12 @@ a {
   position: relative;
 }
 
+/* サジェストが下の ❷ カードに隠れてホイール・タッチが届かないのを防ぐ */
+.principalSearchCard.principalSuggestPanelOpen {
+  position: relative;
+  z-index: $z-index-principal-suggest-card-open;
+}
+
 .principalSuggestOptionSub {
   margin-left: 6px;
   font-size: 12px;
@@ -614,12 +624,14 @@ a {
 
 .diagramSuggestPanel {
   position: absolute;
-  z-index: 30;
+  z-index: $z-index-diagram-suggest-panel;
   left: 0;
   right: 0;
   top: calc(100% + 6px);
   max-height: min(280px, 42vh);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: #ffffff;
