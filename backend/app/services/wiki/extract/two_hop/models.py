@@ -1,11 +1,10 @@
-"""2-hop 抽出で使う型定義・主体記事コンテキスト・進捗コールバック。"""
+"""2-hop 抽出で使う型定義・主体記事コンテキスト。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Protocol, TypedDict
 
-ProgressCb = Callable[[str, int, int], Awaitable[None]] | None
 WikiQuotaFactory = Callable[[], Awaitable[Any]]
 
 
@@ -62,8 +61,3 @@ class MasterArticleContext:
     master_redirects: list[str]
     master_parse_link_norms: set[str]
     master_link_exclude_norms: set[str]
-
-
-async def emit_progress(cb: ProgressCb, phase: str, done: int, total: int) -> None:
-    if cb:
-        await cb(phase, done, total)

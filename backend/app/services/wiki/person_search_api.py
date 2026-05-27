@@ -14,7 +14,7 @@ async def wiki_person_search(
     *,
     query: str,
 ) -> tuple[list[WikiSearchItem], str | None]:
-    """Wikipedia 人物検索 + 人物判定（進捗通知なし・同期 JSON 用）。"""
+    """Wikipedia 人物検索 + 人物判定（同期 JSON 用）。"""
     wiki = JaWikipediaClient()
     try:
         return await run_principal_wiki_search(wiki, query, db=db)

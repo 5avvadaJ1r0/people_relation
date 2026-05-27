@@ -366,7 +366,6 @@ def test_collect_reverse_scores_gather_preserves_input_order() -> None:
             canonical_title="主体",
             master_redirects=[],
             master_url=crud.wiki_ja_article_url("主体"),
-            on_progress=None,
         )
         assert [(row.get("slave") or {}).get("name") for row in out] == [
             "First",

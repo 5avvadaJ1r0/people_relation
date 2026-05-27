@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 import httpx
 from sqlalchemy.orm import Session
@@ -16,8 +16,6 @@ from app.services.wiki.extract.two_hop.quota import quota_batch_human_checks
 from app.services.wiki.human import batch_human_checks_with_db_redis_priority
 
 logger = logging.getLogger(__name__)
-
-ProgressCb = Callable[[str, int, int], Awaitable[None]] | None
 
 # 人物判定の並列度。大きすぎると Wikipedia / Wikidata 側のレート制限や接続枯渇に触れやすい。
 HUMAN_CHECK_CONCURRENCY = 5
@@ -47,11 +45,6 @@ class WikiSearchItem:
         )
 
 
-async def _emit(cb: ProgressCb, phase: str, done: int, total: int) -> None:
-    if cb:
-        await cb(phase, done, total)
-
-
 def _norm_title_for_exact_match(s: str) -> str:
     return " ".join(str(s or "").strip().replace("_", " ").split())
 
@@ -75,16 +68,13 @@ def _log_lookup_exact_failure(q: str, exc: BaseException) -> None:
 
 async def filter_wiki_people_only(
     items: list[WikiSearchItem],
-    on_progress: ProgressCb = None,
     *,
     db: Session,
 ) -> list[WikiSearchItem]:
     out: list[WikiSearchItem] = []
-    total = len(items)
     batch_size = HUMAN_CHECK_CONCURRENCY
     for i in range(0, len(items), batch_size):
         batch = items[i : i + batch_size]
-        await _emit(on_progress, "検索結果の人物判定", i, total)
         titles = [it.title for it in batch]
 
         async def _quota_batch(ts: list[str]) -> list[HumanCheck]:
@@ -99,8 +89,6 @@ async def filter_wiki_people_only(
         for it, ok in zip(batch, results):
             if ok:
                 out.append(it)
-        await _emit(on_progress, "検索結果の人物判定", i + len(batch), total)
-    await _emit(on_progress, "検索結果の人物判定", total, total)
     return out
 
 
@@ -282,7 +270,6 @@ async def expand_disambiguation_results(
 async def run_principal_wiki_search(
     wiki: JaWikipediaClient,
     query: str,
-    on_progress: ProgressCb = None,
     *,
     db: Session,
 ) -> tuple[list[WikiSearchItem], str | None]:
@@ -291,14 +278,12 @@ async def run_principal_wiki_search(
     if not wiki_items:
         return [], "該当人物はいません"
 
-    await _emit(on_progress, "検索結果の人物判定", 0, len(wiki_items))
-    wiki_humans = await filter_wiki_people_only(wiki_items, on_progress, db=db)
+    wiki_humans = await filter_wiki_people_only(wiki_items, db=db)
 
     if not wiki_humans:
         expanded = await expand_disambiguation_results(wiki, wiki_items)
         if len(expanded) > len(wiki_items):
-            await _emit(on_progress, "検索結果の人物判定", 0, len(expanded))
-            wiki_humans = await filter_wiki_people_only(expanded, on_progress, db=db)
+            wiki_humans = await filter_wiki_people_only(expanded, db=db)
 
     if not wiki_humans:
         return [], "該当人物はいません"
