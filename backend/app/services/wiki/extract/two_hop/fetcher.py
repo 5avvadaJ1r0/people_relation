@@ -10,8 +10,6 @@ from app.services.wiki.api.ja_mediawiki import JaWikipediaClient
 from app.services.wiki.extract.two_hop.models import (
     ForwardCandidate,
     MasterArticleContext,
-    ProgressCb,
-    emit_progress,
 )
 from app.services.wiki.extract.two_hop.quota import quota_gather
 from app.services.wiki.parser.encoding_utils import normalize_wiki_link_title
@@ -24,10 +22,7 @@ async def load_master_article_context(
     *,
     master_title: str,
     master_name: str,
-    on_progress: ProgressCb,
 ) -> MasterArticleContext:
-    await emit_progress(on_progress, "主体者情報取得処理中", 0, 1)
-
     async def safe_canonical() -> str:
         try:
             return await wiki.fetch_canonical_title(master_title)
@@ -114,8 +109,6 @@ async def load_master_article_context(
         if n:
             master_link_exclude_norms.add(n)
 
-    await emit_progress(on_progress, "主体者情報解析処理中", 0, 1)
-
     return MasterArticleContext(
         extract_text=str(extract_text or ""),
         wikitext=str(wikitext or ""),
@@ -134,13 +127,11 @@ async def resolve_missing_hrefs(
     wiki: JaWikipediaClient,
     *,
     ranked: list[ForwardCandidate],
-    on_progress: ProgressCb,
 ) -> None:
     no_href = [r for r in ranked if not r.get("href")][:40]
     if not no_href:
         return
 
-    await emit_progress(on_progress, "候補確認", 0, len(no_href))
     batch_size = 5
     for i in range(0, len(no_href), batch_size):
         batch = no_href[i : i + batch_size]
@@ -161,6 +152,3 @@ async def resolve_missing_hrefs(
                 )
 
         await quota_gather(*(lambda r=r: resolve_one(r) for r in batch))
-        await emit_progress(
-            on_progress, "候補確認", min(i + len(batch), len(no_href)), len(no_href)
-        )

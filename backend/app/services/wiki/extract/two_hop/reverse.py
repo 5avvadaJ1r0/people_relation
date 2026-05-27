@@ -9,10 +9,8 @@ import re
 from app.services.wiki.api.ja_mediawiki import JaWikipediaClient
 from app.services.wiki.extract.two_hop.models import (
     ForwardCandidate,
-    ProgressCb,
     WikiRelationRow,
     WikilinkCountRow,
-    emit_progress,
 )
 from app.services.wiki.extract.two_hop.quota import (
     WIKI_OUTBOUND_CONCURRENCY,
@@ -102,7 +100,6 @@ async def collect_reverse_scores(
     canonical_title: str,
     master_redirects: list[str],
     master_url: str,
-    on_progress: ProgressCb,
 ) -> tuple[list[WikiRelationRow], int, list[str]]:
     """reverse は `quota_gather` で外向きを抑制し、候補は限定ワーカーで処理する。"""
     reverse_checked_count = 0
@@ -131,10 +128,9 @@ async def collect_reverse_scores(
     reverse_check_all_if_total_at_most = 1000
     total = len(ranked)
     meta_lock = asyncio.Lock()
-    completed = 0
 
     async def score_one(i: int, r: ForwardCandidate) -> WikiRelationRow:
-        nonlocal reverse_checked_count, completed
+        nonlocal reverse_checked_count
         reverse_point = 0
         has_wiki_page = False
         slave_url = ""
@@ -191,9 +187,6 @@ async def collect_reverse_scores(
             "totalPoint": fp + reverse_point,
             "hasWikiPage": has_wiki_page,
         }
-        async with meta_lock:
-            completed += 1
-            await emit_progress(on_progress, "関連者検索", completed, total)
         return row
 
     if total == 0:

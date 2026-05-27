@@ -13,10 +13,8 @@ from app.schemas import HumanCheck
 from app.services.wiki.api.ja_mediawiki import JaWikipediaClient
 from app.services.wiki.extract.two_hop.models import (
     ForwardCandidate,
-    ProgressCb,
     SupportsResolveCanonicalTitles,
     WikiRelationRow,
-    emit_progress,
 )
 from app.services.wiki.extract.two_hop.quota import (
     quota_batch_human_checks,
@@ -66,7 +64,6 @@ async def filter_forward_humans(
     ranked: list[ForwardCandidate],
     forward_keep: int,
     max_related: int,
-    on_progress: ProgressCb,
     db: Session,
 ) -> list[ForwardCandidate]:
     human_check_limit = min(2000, max(350, max_related * 12))
@@ -83,7 +80,6 @@ async def filter_forward_humans(
     if not ranked_with_href:
         return ranked
 
-    await emit_progress(on_progress, "人物判定処理中", 0, len(ranked_with_href))
     ok_names: set[str] = set()
     for i in range(0, len(ranked_with_href), HUMAN_CHECK_BATCH_SIZE):
         batch = ranked_with_href[i : i + HUMAN_CHECK_BATCH_SIZE]
@@ -114,12 +110,6 @@ async def filter_forward_humans(
         for r, c in zip(batch, checks):
             if c.source != "unknown" and bool(c.is_human):
                 ok_names.add(str(r.get("name") or ""))
-        await emit_progress(
-            on_progress,
-            "人物判定処理中",
-            min(i + len(batch), len(ranked_with_href)),
-            len(ranked_with_href),
-        )
 
     filtered = [r for r in ranked_with_href if r.get("name") in ok_names]
     filtered = sorted(filtered, key=lambda x: int(x.get("point") or 0), reverse=True)[

@@ -21,7 +21,7 @@ from app.services.wiki.extract.two_hop.filter import (
     filter_forward_humans,
     relation_passes_self_filter,
 )
-from app.services.wiki.extract.two_hop.models import ProgressCb, WikiSlaveRef
+from app.services.wiki.extract.two_hop.models import WikiSlaveRef
 from app.services.wiki.extract.two_hop.ranker import build_forward_ranked_list
 from app.services.wiki.extract.two_hop.reverse import collect_reverse_scores
 
@@ -35,7 +35,6 @@ async def extract_two_hop_relations(
     master_name: str,
     max_related: int,
     db: Session,
-    on_progress: ProgressCb = None,
 ) -> dict[str, Any]:
     master_url = crud.wiki_ja_article_url(master_title)
     master: WikiSlaveRef = {
@@ -48,21 +47,19 @@ async def extract_two_hop_relations(
         wiki,
         master_title=master_title,
         master_name=master_name,
-        on_progress=on_progress,
     )
 
     ranked, forward_keep = build_forward_ranked_list(ctx, max_related=max_related)
 
     ranked = await merge_forward_candidates_by_canonical_titles(wiki, ranked)
 
-    await resolve_missing_hrefs(wiki, ranked=ranked, on_progress=on_progress)
+    await resolve_missing_hrefs(wiki, ranked=ranked)
 
     ranked = await filter_forward_humans(
         wiki,
         ranked=ranked,
         forward_keep=forward_keep,
         max_related=max_related,
-        on_progress=on_progress,
         db=db,
     )
 
@@ -74,7 +71,6 @@ async def extract_two_hop_relations(
         canonical_title=ctx.canonical_title,
         master_redirects=ctx.master_redirects,
         master_url=master_url,
-        on_progress=on_progress,
     )
 
     if reverse_checked_count:

@@ -1,7 +1,7 @@
 """Wikipedia 2-hop 関連抽出パッケージ。
 
 責務ごとに分離:
-- ``models``     型・データクラス・進捗コールバック
+- ``models``     型・データクラス
 - ``quota``      外向き同時実行 / レート制御 / 人物判定バッチ用クォータ
 - ``fetcher``    主体記事の各種情報取得・参照 href の補完
 - ``ranker``     フォワード候補のスコア構築・上位抽出
@@ -18,7 +18,6 @@ from app.services.wiki.extract.two_hop.models import (
     ForwardCandidate,
     ForwardScoreRow,
     MasterArticleContext,
-    ProgressCb,
     SupportsResolveCanonicalTitles,
     WikiQuotaFactory,
     WikilinkCountRow,
@@ -31,7 +30,6 @@ __all__ = [
     "ForwardCandidate",
     "ForwardScoreRow",
     "MasterArticleContext",
-    "ProgressCb",
     "SupportsResolveCanonicalTitles",
     "WikiQuotaFactory",
     "WikiRelationRow",
