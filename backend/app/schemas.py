@@ -81,6 +81,22 @@ class WikiMasterResolveOut(BaseModel):
     items: list[WikiMasterResolvePageOut]
 
 
+class WikiSearchRowOut(BaseModel):
+    title: str
+    pageid: int
+    snippet: str | None = None
+
+
+class WikiPersonSearchOut(BaseModel):
+    """Wikipedia 人物検索（人物フィルタ済み）の JSON 応答。"""
+
+    wiki: list[WikiSearchRowOut]
+    empty_message: str | None = Field(
+        default=None,
+        description="wiki が空のときの理由文言（例: 該当人物はいません）",
+    )
+
+
 class CoreNetworkIn(BaseModel):
     """相関図（中心人物複数）のエッジ取得リクエスト。"""
 

@@ -664,3 +664,53 @@ def test_resolve_wiki_masters_too_many_items_422(client: TestClient) -> None:
     items = [{"title": "T", "pageid": i} for i in range(51)]
     r = client.post("/api/v1/person/resolve_wiki_masters", json={"items": items})
     assert r.status_code == 422
+
+
+def test_wiki_person_search_validation(client: TestClient) -> None:
+    r = client.get("/api/v1/wiki/person_search", params={"q": ""})
+    assert r.status_code == 422
+
+
+def test_wiki_person_search_json(monkeypatch, client: TestClient) -> None:
+    from app.api.v1 import wiki as wiki_router
+    from app.services.wiki.extract.principal_search import WikiSearchItem
+
+    async def fake_wiki_person_search(db, *, query: str):
+        _ = db, query
+        return (
+            [WikiSearchItem(title="テスト太郎", pageid=42, snippet="…")],
+            None,
+        )
+
+    monkeypatch.setattr(wiki_router, "wiki_person_search", fake_wiki_person_search)
+    r = client.get("/api/v1/wiki/person_search", params={"q": "テスト"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["wiki"] == [{"title": "テスト太郎", "pageid": 42, "snippet": "…"}]
+    assert body["empty_message"] is None
+
+
+def test_wiki_person_search_empty_message(monkeypatch, client: TestClient) -> None:
+    from app.api.v1 import wiki as wiki_router
+
+    async def fake_wiki_person_search(db, *, query: str):
+        _ = db, query
+        return ([], "該当人物はいません")
+
+    monkeypatch.setattr(wiki_router, "wiki_person_search", fake_wiki_person_search)
+    r = client.get("/api/v1/wiki/person_search", params={"q": "なし"})
+    assert r.status_code == 200
+    assert r.json() == {"wiki": [], "empty_message": "該当人物はいません"}
+
+
+def test_wiki_person_search_upstream_error(monkeypatch, client: TestClient) -> None:
+    from app.api.v1 import wiki as wiki_router
+
+    async def failing_wiki_person_search(db, *, query: str):
+        _ = db, query
+        raise RuntimeError("Wikipedia API unavailable")
+
+    monkeypatch.setattr(wiki_router, "wiki_person_search", failing_wiki_person_search)
+    r = client.get("/api/v1/wiki/person_search", params={"q": "テスト"})
+    assert r.status_code == 502
+    assert r.json()["detail"] == "Wikipedia API unavailable"
