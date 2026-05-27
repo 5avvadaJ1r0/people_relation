@@ -4,17 +4,17 @@
 
 1. **検索（❶〜❷）**
    ブラウザは **MediaWiki / Wikidata に直接アクセスしない**。
-   - Wikipedia 側の検索・各候補の **人物判定（Wikidata）** は **`GET /api/v1/wiki/person_search_sse`**（SSE）で実行され、進捗イベントが返る。
-   - あわせて保存済み DB 人物のあたり付け用に **`GET /api/v1/person/search`** と、Wikipedia 結果確定後の **`POST /api/v1/person/resolve_wiki_masters`** を **並列**で呼ぶ（SSE 完了後に両者を起動）。各行の記事タイトルから canonical URL を組み立てて resolve が **主体者実行済み**の行を一括突合する（❷「相関図に追加」の主経路）。人物選択後は **記事タイトルおよび括弧を除いた表示名**でも `person/search` を追加で呼び、`frontend/src/lib/wikiPersonMatch.ts` で突き合わせる。
+   - Wikipedia 側の検索・各候補の **人物判定（Wikidata）** は **`GET /api/v1/wiki/person_search`**（JSON）で実行する。
+   - あわせて保存済み DB 人物のあたり付け用に **`GET /api/v1/person/search`** と、Wikipedia 結果確定後の **`POST /api/v1/person/resolve_wiki_masters`** を **並列**で呼ぶ。各行の記事タイトルから canonical URL を組み立てて resolve が **主体者実行済み**の行を一括突合する（❷「相関図に追加」の主経路）。人物選択後は **記事タイトルおよび括弧を除いた表示名**でも `person/search` を追加で呼び、`frontend/src/lib/wikiPersonMatch.ts` で突き合わせる。
 
 2. **関連抽出（❸）**
-   主体記事の **本文・wikitext 解析・2-hop 集計・人物判定** はすべて **`GET /api/v1/wiki/extract_relations_sse`**（SSE）でバックエンドが実行する。クエリ `max_related` で関連者の上限（既定 100、上限 500）を指定できる。
+   主体記事の **本文・wikitext 解析・2-hop 集計・人物判定** は **`app.worker.relation_extract`** が `app.services.related_search` 経由で実行し、**`POST /api/v1/relation` 相当の保存**まで行う（Web UI からは HTTP で抽出しない）。関連者上限はワーカー側で既定 100（`DEFAULT_MAX_RELATED`）。
 
 3. **キャッシュ**
    人物判定結果は **`wiki_human_cache`** および **Redis** にキャッシュされる。保存済みの関係データは **PostgreSQL**。
 
-4. **保存**
-   SSE の抽出が終わったあと、フロントは **`POST /api/v1/relation`** で関係を保存する（クエリに主体の Wikipedia URL を付与して、同一主体の既存関係を置き換え可能。詳細は [api-usage.md](./api-usage.md) および [api.md](./api.md)）。
+4. **表示**
+   フロントは保存済みデータを **`GET /api/v1/person/{id}/relations_aggregate`** で読む。手動で関係を投入する場合のみ **`POST /api/v1/relation`** を利用する（クエリに主体の Wikipedia URL を付与して、同一主体の既存関係を置き換え可能。詳細は [api-usage.md](./api-usage.md) および [api.md](./api.md)）。
 
 5. **相関図（任意）**
    複数の主体者実行済み人物を中心に、保存済みの関係だけから無向ネットワークを描画する。画面の **「相関図作成」** タブと API は [frontend.md](./frontend.md) の「相関図作成タブ」および [api.md](./api.md) を参照。
@@ -24,13 +24,13 @@
 実装は `app.services.wiki.extract.two_hop` がオーケストレーションする。**概念としては**次のとおり。
 
 - **検索フェーズ**
-  MediaWiki の検索結果をベースに、候補ごとに Wikidata で **人物かどうか** を判定し、人物のみを一覧に載せる（SSE で「検索結果の人物判定」進捗を通知）。
+  MediaWiki の検索結果をベースに、候補ごとに Wikidata で **人物かどうか** を判定し、人物のみを一覧に載せる（`GET /api/v1/wiki/person_search`）。
 
 - **抽出フェーズ（2-hop）**
   1. 主体記事について本文・wikitext から候補リンクや表記を集計し、**主体→関連**方向のスコア（forward）を付ける。
   2. 上位候補について関連側記事を参照し、**関連→主体**方向のスコア（reverse）を取り込む。
   3. 同一 Wikipedia 記事に正規化できる関連は **合算**し、**合計スコア（totalPoint）** で並べ替える。
-  4. サーバーはこの結果を SSE の `extract_result` で返す（フロントは **主体値 / 関連値 / 合計値** として表示）。
+  4. ワーカーが DB に保存し、フロントは **主体値 / 関連値 / 合計値** を `relations_aggregate` から表示する。
 
 （例）「AAA」と入力した場合
 

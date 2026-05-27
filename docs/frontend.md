@@ -3,7 +3,7 @@
 ## 画面の挙動（React）
 
 - **❶ 主体者入力** — 氏名の一部を入力すると、`GET /api/v1/person/search_executed_masters` で **主体者として実行済み**（`executed_as_master`）の人物をサジェスト表示する（`person.name` の部分一致）。サジェストから人物を選ぶと、即座に ❷ へ関連者一覧を表示する。
-- **❷ 主体者・関連者** — 選択した主体者について **`GET /api/v1/person/{id}/relations_aggregate`** で **キャッシュのみ**表示する（Web からの Wikipedia 検索・`person_search_sse` / `extract_relations_sse` / `POST /api/v1/relation` は行わない。関連者の新規抽出・登録はワーカー等のバックエンド処理に委ねる）。バックエンドが発行する SQL の全文は [api.md の「実行 SQL（関連者リストアップ）」](./api.md#実行-sql関連者リストアップ) を参照。
+- **❷ 主体者・関連者** — 選択した主体者について **`GET /api/v1/person/{id}/relations_aggregate`** で **キャッシュのみ**表示する（Web からの Wikipedia 2-hop 抽出・`POST /api/v1/relation` は行わない。関連者の新規抽出・登録は **`relation_extract` ワーカー**に委ねる）。バックエンドが発行する SQL の全文は [api.md の「実行 SQL（関連者リストアップ）」](./api.md#実行-sql関連者リストアップ) を参照。
 - 主体者メタ（氏名ピルと「関連値 0 は除外」の間）に **「相関図に追加」** を表示し、クリックで相関図タブの中心候補に追加する（主体者実行済みのとき）。
 - 関連者テーブルは **主体値（forward） / 関連値（reverse） / 合計値（total）**。既定で **「関連値 0 は除外」** がオン（オフにすると reverse が 0 の行も表示）。
 
