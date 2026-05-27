@@ -2,6 +2,13 @@
 
 エンドポイントの詳細・レート制限・エラー形式は [api.md](./api.md) を参照してください。
 
+## Wikipedia 人物検索（JSON）
+
+- **`GET /api/v1/wiki/person_search?q=...`** — 日本語 Wikipedia 検索と Wikidata による人物フィルタ。応答は `application/json`（旧 **`person_search_sse`** は廃止）。
+- **クエリ**: `q`（必須、1 文字以上）
+- **成功 200**: `{ "wiki": [{ "title", "pageid", "snippet"? }], "empty_message": string | null }` — 人物のみ残す。該当なしは `wiki: []` と理由文言。
+- **障害 502**: 外部 API 等で処理不能なとき（`detail` にメッセージ）。詳細は [api.md §8-1](./api.md#8-1-get-apiv1wikiperson_search)。
+
 ## Wikipedia からの抽出結果の保存
 
 2-hop 抽出と DB 保存は **`app.worker.relation_extract`** が担当する。フロントが手動で関係を送る場合のみ **`POST /api/v1/relation`** を利用する（[architecture.md](./architecture.md) 参照）。
@@ -60,6 +67,6 @@ Content-Type: application/json
 - `POST /api/v1/diagram/core_network`（中心人物 1〜10 名の **無向ペア集約**。リクエストに `total_point_gt` あり。レスポンスは相関図用エッジ一覧。実行 SQL は [api.md](./api.md#実行-sql相関図作成)）
 - `GET /api/v1/person/{person_id}/relations`（主体者の関連者を取得。各 `master` / `slave` に `has_relations` / `is_executed_master` を含む）
 - `GET /api/v1/person/{person_id}/relations_aggregate`（forward / reverse を集約した関連者一覧。❷ 関連者リストのデータ源。実行 SQL は [api.md](./api.md#実行-sql関連者リストアップ)）
-- `GET /api/v1/wiki/person_search?q=...`（Wikipedia 検索 + 人物フィルタ、**JSON**）
+- `GET /api/v1/wiki/person_search?q=...`（Wikipedia 検索 + 人物フィルタ、**JSON**。上記 [Wikipedia 人物検索](#wikipedia-人物検索json) 参照）
 
 データベーススキーマ（PostgreSQL）の最新定義: [ddl_postgres.sql](./ddl_postgres.sql)

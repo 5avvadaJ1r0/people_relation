@@ -701,3 +701,16 @@ def test_wiki_person_search_empty_message(monkeypatch, client: TestClient) -> No
     r = client.get("/api/v1/wiki/person_search", params={"q": "なし"})
     assert r.status_code == 200
     assert r.json() == {"wiki": [], "empty_message": "該当人物はいません"}
+
+
+def test_wiki_person_search_upstream_error(monkeypatch, client: TestClient) -> None:
+    from app.api.v1 import wiki as wiki_router
+
+    async def failing_wiki_person_search(db, *, query: str):
+        _ = db, query
+        raise RuntimeError("Wikipedia API unavailable")
+
+    monkeypatch.setattr(wiki_router, "wiki_person_search", failing_wiki_person_search)
+    r = client.get("/api/v1/wiki/person_search", params={"q": "テスト"})
+    assert r.status_code == 502
+    assert r.json()["detail"] == "Wikipedia API unavailable"
