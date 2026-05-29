@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 import redis
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from app.settings import settings
 
@@ -13,8 +13,50 @@ _OG_KEY_PREFIX = "diagram_share:og:"
 _OG_TTL_SECONDS = 60 * 60 * 24 * 30
 _MAX_OG_BYTES = 2 * 1024 * 1024
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+_IHDR_CHUNK_TYPE = b"IHDR"
+_MIN_PNG_BYTES = 33  # シグネチャ + 最小 IHDR チャンク（length/type/data/CRC）
 
 _redis_client: redis.Redis | None = None
+
+
+def _validate_png_bytes(png: bytes) -> None:
+    """PNG シグネチャ・IHDR・IEND の存在を確認する（完全デコードは行わない）。"""
+    if len(png) < _MIN_PNG_BYTES:
+        raise HTTPException(status_code=400, detail="PNG 画像のみアップロードできます")
+    if not png.startswith(_PNG_MAGIC):
+        raise HTTPException(status_code=400, detail="PNG 画像のみアップロードできます")
+    if png[12:16] != _IHDR_CHUNK_TYPE:
+        raise HTTPException(status_code=400, detail="PNG 画像のみアップロードできます")
+    if b"IEND" not in png[-32:]:
+        raise HTTPException(status_code=400, detail="PNG 画像のみアップロードできます")
+
+
+async def read_og_image_body(
+    request: Request, *, max_bytes: int = _MAX_OG_BYTES
+) -> bytes:
+    """OG 画像 PUT 用。Content-Length 超過は先に拒否し、ストリーム読み込みも上限で打ち切る。"""
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared = int(content_length)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400, detail="Content-Length が不正です"
+            ) from exc
+        if declared > max_bytes:
+            raise HTTPException(
+                status_code=413, detail="画像が大きすぎます（最大 2MB）"
+            )
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413, detail="画像が大きすぎます（最大 2MB）"
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _redis() -> redis.Redis:
@@ -29,8 +71,7 @@ def _og_key(share_id: str) -> str:
 
 
 def store_diagram_share_og_image(*, share_id: str, png: bytes) -> None:
-    if not png.startswith(_PNG_MAGIC):
-        raise HTTPException(status_code=400, detail="PNG 画像のみアップロードできます")
+    _validate_png_bytes(png)
     if len(png) > _MAX_OG_BYTES:
         raise HTTPException(status_code=413, detail="画像が大きすぎます（最大 2MB）")
     try:

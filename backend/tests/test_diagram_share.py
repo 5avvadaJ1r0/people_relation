@@ -2,12 +2,23 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.crud.person import wiki_ja_article_url
 from app.services.diagram_share_token import (
     decode_diagram_share_id,
     encode_diagram_share_payload,
+)
+
+# 1x1 RGB PNG（シグネチャ + IHDR + IEND）。OG 検証テスト用。
+_MINIMAL_VALID_PNG = (
+    b"\x89PNG\r\n\x1a\n"
+    b"\x00\x00\x00\rIHDR"
+    b"\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00"
+    b"\x90wS\xde"
+    b"\x00\x00\x00\x00IEND\xaeB`\x82"
 )
 
 
@@ -23,6 +34,37 @@ def test_diagram_share_token_roundtrip() -> None:
         "show_peer_links": True,
         "total_point_gt": 3,
     }
+
+
+def test_diagram_share_token_base64_padding_roundtrip() -> None:
+    """末尾パディング除去後の share_id が、復号時のパディング補完で正しく往復する。"""
+    cases = [
+        ([1], False, 0),
+        ([1, 2, 3, 4, 5], True, 99),
+        (list(range(1, 11)), False, 12345),
+    ]
+    for center_ids, show_peer, total_gt in cases:
+        share_id = encode_diagram_share_payload(
+            center_person_ids=center_ids,
+            show_peer_links=show_peer,
+            total_point_gt=total_gt,
+        )
+        assert "=" not in share_id
+        pad = "=" * (-len(share_id) % 4)
+        assert decode_diagram_share_id(share_id) == decode_diagram_share_id(
+            share_id + pad
+        )
+        assert decode_diagram_share_id(share_id) == {
+            "center_person_ids": list(dict.fromkeys(center_ids))[:10],
+            "show_peer_links": show_peer,
+            "total_point_gt": total_gt,
+        }
+
+
+def test_diagram_share_token_invalid_share_id() -> None:
+    with pytest.raises(HTTPException) as exc:
+        decode_diagram_share_id("not-a-valid-token!!!")
+    assert exc.value.status_code == 400
 
 
 def test_diagram_share_create_and_resolve(client: TestClient) -> None:
@@ -123,13 +165,32 @@ def test_diagram_share_og_image_put_get(mock_redis_factory, client: TestClient) 
         show_peer_links=False,
         total_point_gt=1,
     )
-    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
     put = client.put(
         f"/api/v1/diagram/share/{share_id}/og-image",
-        content=png,
+        content=_MINIMAL_VALID_PNG,
         headers={"Content-Type": "image/png"},
     )
     assert put.status_code == 204
     got = client.get(f"/api/v1/diagram/share/{share_id}/og-image")
     assert got.status_code == 200
-    assert got.content == png
+    assert got.content == _MINIMAL_VALID_PNG
+
+
+def test_diagram_share_og_image_rejects_invalid_png(client: TestClient) -> None:
+    share_id = encode_diagram_share_payload(
+        center_person_ids=[1],
+        show_peer_links=False,
+        total_point_gt=0,
+    )
+    bad_magic = client.put(
+        f"/api/v1/diagram/share/{share_id}/og-image",
+        content=b"not-png",
+        headers={"Content-Type": "image/png"},
+    )
+    assert bad_magic.status_code == 400
+    missing_ihdr = client.put(
+        f"/api/v1/diagram/share/{share_id}/og-image",
+        content=b"\x89PNG\r\n\x1a\n" + b"\x00" * 24,
+        headers={"Content-Type": "image/png"},
+    )
+    assert missing_ihdr.status_code == 400

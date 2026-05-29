@@ -554,7 +554,8 @@ sequenceDiagram
 
 - **用途**: 「URLを共有」時にフロントが生成した相関図 PNG を Redis に保存（TTL 30 日、最大 2MB）。
 - **Content-Type**: `image/png`（生バイト）
-- **レスポンス**: **204**
+- **検証**: PNG シグネチャ・IHDR チャンク・IEND の存在。`Content-Length` およびストリーム読み込みは 2MB で打ち切り。
+- **レスポンス**: **204**、不正 PNG **400**、サイズ超過 **413**
 
 #### `GET /api/v1/diagram/share/{share_id}/og-image`
 

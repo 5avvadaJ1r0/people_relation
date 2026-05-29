@@ -20,6 +20,7 @@ from app.services.diagram_share import (
 )
 from app.services.diagram_share_og import (
     load_diagram_share_og_image,
+    read_og_image_body,
     store_diagram_share_og_image,
 )
 
@@ -64,7 +65,7 @@ async def put_diagram_share_og_image(
     from app.services.diagram_share_token import decode_diagram_share_id
 
     decode_diagram_share_id(share_id)
-    png = await request.body()
+    png = await read_og_image_body(request)
     store_diagram_share_og_image(share_id=share_id, png=png)
     return Response(status_code=204)
 

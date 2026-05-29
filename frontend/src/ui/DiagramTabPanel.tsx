@@ -329,6 +329,10 @@ export const DiagramTabPanel = ({
   const [diagramUrlShareBusy, setDiagramUrlShareBusy] = useState(false);
   const [diagramUrlShareDone, setDiagramUrlShareDone] = useState(false);
   const appliedShareIdRef = useRef<string | null>(null);
+  const diagramUrlShareGenRef = useRef(0);
+  const diagramUrlShareDoneTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(
+    null,
+  );
   const webShareImageSupported = useMemo(() => canShareDiagramImage(), []);
 
   const panelError = error ?? shareLoadError;
@@ -503,6 +507,12 @@ export const DiagramTabPanel = ({
 
   const onShareDiagramUrl = useCallback(async () => {
     if (center.length === 0 || !hasDiagram) return;
+    const gen = diagramUrlShareGenRef.current + 1;
+    diagramUrlShareGenRef.current = gen;
+    if (diagramUrlShareDoneTimerRef.current !== null) {
+      window.clearTimeout(diagramUrlShareDoneTimerRef.current);
+      diagramUrlShareDoneTimerRef.current = null;
+    }
     setDiagramShareError(null);
     setDiagramUrlShareDone(false);
     setDiagramUrlShareBusy(true);
@@ -512,12 +522,16 @@ export const DiagramTabPanel = ({
         show_peer_links: showPeerLinks,
         total_point_gt: totalPointGt,
       });
+      if (gen !== diagramUrlShareGenRef.current) return;
       const png = await diagramViewRef.current?.capturePngBlob();
+      if (gen !== diagramUrlShareGenRef.current) return;
       if (png) {
         await apiPutDiagramShareOgImage(shareId, png);
       }
+      if (gen !== diagramUrlShareGenRef.current) return;
       const pageUrl = buildDiagramSharePageUrl(shareId);
       await navigator.clipboard.writeText(pageUrl);
+      if (gen !== diagramUrlShareGenRef.current) return;
       const titles = members.length > 0 ? members : center.map((c) => c.title);
       applyDiagramShareMeta({
         shareId,
@@ -526,11 +540,18 @@ export const DiagramTabPanel = ({
         hasOgImage: Boolean(png),
       });
       setDiagramUrlShareDone(true);
-      window.setTimeout(() => setDiagramUrlShareDone(false), 4000);
+      diagramUrlShareDoneTimerRef.current = window.setTimeout(() => {
+        if (gen !== diagramUrlShareGenRef.current) return;
+        setDiagramUrlShareDone(false);
+        diagramUrlShareDoneTimerRef.current = null;
+      }, 4000);
     } catch (e: unknown) {
+      if (gen !== diagramUrlShareGenRef.current) return;
       setDiagramShareError(e instanceof Error ? e.message : String(e));
     } finally {
-      setDiagramUrlShareBusy(false);
+      if (gen === diagramUrlShareGenRef.current) {
+        setDiagramUrlShareBusy(false);
+      }
     }
   }, [center, hasDiagram, members, showPeerLinks, totalPointGt]);
 
@@ -577,6 +598,15 @@ export const DiagramTabPanel = ({
       setDiagramShareError(null);
     }
   }, [hasDiagram]);
+
+  useEffect(
+    () => () => {
+      if (diagramUrlShareDoneTimerRef.current !== null) {
+        window.clearTimeout(diagramUrlShareDoneTimerRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!diagramFlowExpanded) return;
