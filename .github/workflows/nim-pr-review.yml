@@ -1,36 +1,48 @@
 # fork 由来の PR では pull_request イベントではリポジトリ secrets が渡らないため、
 # 同一リポジトリ内のブランチ PR のみを対象とする。
 #
-# プロバイダ切替: Settings > Secrets and variables > Actions > Variables
+# プロバイダ切替: Settings > Secrets and variables > Actions > Variables（Repository variables）
 #   PR_REVIEW_PROVIDER = nim | gemini  （未設定時は nim）
+# ※ 切替ロジック入りの本ファイルと gemini スクリプトは default ブランチ（main）にマージ後に有効。
 name: AI PR review
 
 on:
   pull_request:
     types: [opened, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: レビュー対象の PR 番号
+        required: true
+      provider:
+        description: nim または gemini（未指定時は PR_REVIEW_PROVIDER 変数）
+        required: false
+        default: ""
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: ai-pr-review-${{ github.repository }}-${{ github.event.pull_request.number }}
+  group: ai-pr-review-${{ github.repository }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   ai-review:
     runs-on: ubuntu-latest
     if: >-
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.fork == false
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.pull_request.draft == false &&
+        github.event.pull_request.head.repo.fork == false
+      )
 
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GITHUB_REPOSITORY: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      PR_REVIEW_PROVIDER: ${{ vars.PR_REVIEW_PROVIDER }}
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
       NIM_MODEL: ${{ vars.NIM_MODEL }}
       NIM_API_BASE_URL: ${{ vars.NIM_API_BASE_URL }}
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
@@ -39,26 +51,56 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Resolve PR review provider
         id: provider
+        env:
+          # workflow_dispatch の入力 > Repository/Environment variables
+          PROVIDER_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.provider || '' }}
+          PROVIDER_VAR: ${{ vars.PR_REVIEW_PROVIDER }}
         run: |
-          raw="${PR_REVIEW_PROVIDER:-nim}"
-          raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | xargs)"
+          set -euo pipefail
+          raw="${PROVIDER_INPUT:-}"
+          if [ -z "$raw" ]; then
+            raw="${PROVIDER_VAR:-}"
+          fi
+          if [ -z "$raw" ]; then
+            raw="nim"
+          fi
+          raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
           case "$raw" in
             nim|gemini)
               echo "name=$raw" >> "$GITHUB_OUTPUT"
               ;;
-            "")
-              echo "name=nim" >> "$GITHUB_OUTPUT"
-              ;;
             *)
-              echo "::warning::PR_REVIEW_PROVIDER が不明です ($raw)。nim を使用します。"
+              echo "::warning::PR_REVIEW_PROVIDER が不明です (${raw})。nim を使用します。"
               echo "name=nim" >> "$GITHUB_OUTPUT"
               ;;
           esac
-          echo "PR review provider: $(grep '^name=' "$GITHUB_OUTPUT" | cut -d= -f2-)"
+          resolved="$(grep '^name=' "$GITHUB_OUTPUT" | cut -d= -f2-)"
+          echo "Resolved provider: ${resolved}"
+          echo "PR_REVIEW_PROVIDER (repository variable): ${PROVIDER_VAR:-<empty>}"
+          if [ -n "${PROVIDER_INPUT:-}" ]; then
+            echo "workflow_dispatch input provider: ${PROVIDER_INPUT}"
+          fi
+
+      - name: Report configuration
+        run: |
+          {
+            echo "## AI PR review configuration"
+            echo ""
+            echo "| 項目 | 値 |"
+            echo "| --- | --- |"
+            echo "| Resolved provider | \`${{ steps.provider.outputs.name }}\` |"
+            echo "| \`vars.PR_REVIEW_PROVIDER\` | \`${{ vars.PR_REVIEW_PROVIDER }}\` |"
+            echo "| Workflow ref | \`${{ github.workflow_ref }}\` |"
+            echo "| NVIDIA_API_KEY | ${{ secrets.NVIDIA_API_KEY != '' && 'set' || '**missing**' }} |"
+            echo "| GEMINI_API_KEY | ${{ secrets.GEMINI_API_KEY != '' && 'set' || '**missing**' }} |"
+            echo ""
+            echo "Gemini 利用時は \`GEMINI_API_KEY\` シークレットが必須です。"
+            echo "切替ロジックは **default ブランチ上の本ワークフロー** にマージされている必要があります。"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check API key (NIM)
         id: nim_key
@@ -68,7 +110,8 @@ jobs:
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::NVIDIA_API_KEY が未設定です。Settings > Secrets and variables > Actions に NVIDIA_API_KEY を追加してください。"
+            echo "::error::PR_REVIEW_PROVIDER=nim ですが NVIDIA_API_KEY が未設定です。"
+            exit 1
           fi
 
       - name: Check API key (Gemini)
@@ -79,7 +122,16 @@ jobs:
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::GEMINI_API_KEY が未設定です。Settings > Secrets and variables > Actions に GEMINI_API_KEY を追加してください。"
+            echo "::error::PR_REVIEW_PROVIDER=gemini ですが GEMINI_API_KEY が未設定です。Actions > Secrets に GEMINI_API_KEY を追加してください。"
+            exit 1
+          fi
+
+      - name: Verify Gemini script exists
+        if: steps.provider.outputs.name == 'gemini'
+        run: |
+          if [ ! -f .github/scripts/gemini_pr_review.py ]; then
+            echo "::error::.github/scripts/gemini_pr_review.py がありません。切替対応を default ブランチ（main）へマージしてください。"
+            exit 1
           fi
 
       - uses: reviewdog/action-setup@v1
