@@ -523,14 +523,14 @@ export const DiagramTabPanel = ({
         total_point_gt: totalPointGt,
       });
       if (gen !== diagramUrlShareGenRef.current) return;
+      const pageUrl = buildDiagramSharePageUrl(shareId);
+      await navigator.clipboard.writeText(pageUrl);
+      if (gen !== diagramUrlShareGenRef.current) return;
       const png = await diagramViewRef.current?.capturePngBlob();
       if (gen !== diagramUrlShareGenRef.current) return;
       if (png) {
         await apiPutDiagramShareOgImage(shareId, png);
       }
-      if (gen !== diagramUrlShareGenRef.current) return;
-      const pageUrl = buildDiagramSharePageUrl(shareId);
-      await navigator.clipboard.writeText(pageUrl);
       if (gen !== diagramUrlShareGenRef.current) return;
       const titles = members.length > 0 ? members : center.map((c) => c.title);
       applyDiagramShareMeta({

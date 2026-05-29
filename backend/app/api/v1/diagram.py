@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
@@ -64,6 +64,14 @@ async def put_diagram_share_og_image(
     """X / OGP 用の相関図 PNG を Redis に保存する（share_id 検証のみ）。"""
     from app.services.diagram_share_token import decode_diagram_share_id
 
+    content_type = (
+        request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    )
+    if content_type != "image/png":
+        raise HTTPException(
+            status_code=415,
+            detail="Content-Type は image/png である必要があります",
+        )
     decode_diagram_share_id(share_id)
     png = await read_og_image_body(request)
     store_diagram_share_og_image(share_id=share_id, png=png)

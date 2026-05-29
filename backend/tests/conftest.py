@@ -23,6 +23,9 @@ os.environ.setdefault(
 
 from app.db import engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services.diagram_share_token import init_diagram_share_crypto  # noqa: E402
+
+init_diagram_share_crypto()
 
 
 @pytest.fixture(scope="session")

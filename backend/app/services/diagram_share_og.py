@@ -49,13 +49,19 @@ async def read_og_image_body(
             )
     chunks: list[bytes] = []
     total = 0
-    async for chunk in request.stream():
-        total += len(chunk)
-        if total > max_bytes:
-            raise HTTPException(
-                status_code=413, detail="画像が大きすぎます（最大 2MB）"
-            )
-        chunks.append(chunk)
+    overflow = False
+    try:
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > max_bytes:
+                overflow = True
+                break
+            chunks.append(chunk)
+    finally:
+        if overflow:
+            await request.close()
+    if overflow:
+        raise HTTPException(status_code=413, detail="画像が大きすぎます（最大 2MB）")
     return b"".join(chunks)
 
 

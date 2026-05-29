@@ -37,7 +37,7 @@ def test_diagram_share_token_roundtrip() -> None:
 
 
 def test_diagram_share_token_base64_padding_roundtrip() -> None:
-    """末尾パディング除去後の share_id が、復号時のパディング補完で正しく往復する。"""
+    """share_id はパディング除去済みの canonical 形式のみ受け付ける。"""
     cases = [
         ([1], False, 0),
         ([1, 2, 3, 4, 5], True, 99),
@@ -50,15 +50,16 @@ def test_diagram_share_token_base64_padding_roundtrip() -> None:
             total_point_gt=total_gt,
         )
         assert "=" not in share_id
-        pad = "=" * (-len(share_id) % 4)
-        assert decode_diagram_share_id(share_id) == decode_diagram_share_id(
-            share_id + pad
-        )
         assert decode_diagram_share_id(share_id) == {
             "center_person_ids": list(dict.fromkeys(center_ids))[:10],
             "show_peer_links": show_peer,
             "total_point_gt": total_gt,
         }
+        pad = "=" * (-len(share_id) % 4)
+        if pad:
+            with pytest.raises(HTTPException) as exc:
+                decode_diagram_share_id(share_id + pad)
+            assert exc.value.status_code == 400
 
 
 def test_diagram_share_token_invalid_share_id() -> None:
@@ -174,6 +175,22 @@ def test_diagram_share_og_image_put_get(mock_redis_factory, client: TestClient) 
     got = client.get(f"/api/v1/diagram/share/{share_id}/og-image")
     assert got.status_code == 200
     assert got.content == _MINIMAL_VALID_PNG
+
+
+def test_diagram_share_og_image_rejects_invalid_content_type(
+    client: TestClient,
+) -> None:
+    share_id = encode_diagram_share_payload(
+        center_person_ids=[1],
+        show_peer_links=False,
+        total_point_gt=0,
+    )
+    bad_type = client.put(
+        f"/api/v1/diagram/share/{share_id}/og-image",
+        content=_MINIMAL_VALID_PNG,
+        headers={"Content-Type": "image/jpeg"},
+    )
+    assert bad_type.status_code == 415
 
 
 def test_diagram_share_og_image_rejects_invalid_png(client: TestClient) -> None:

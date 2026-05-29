@@ -74,6 +74,18 @@ export const useDiagramShareFromUrl = (
     };
   }, [setDiagramCenter, setMainTab]);
 
+  useEffect(() => {
+    const syncMetaWithLocation = () => {
+      if (!readDiagramShareIdFromLocation()) {
+        clearDiagramShareMeta(DEFAULT_PAGE_TITLE);
+        setBootstrap(null);
+        setShareLoadError(null);
+      }
+    };
+    window.addEventListener("popstate", syncMetaWithLocation);
+    return () => window.removeEventListener("popstate", syncMetaWithLocation);
+  }, []);
+
   useEffect(
     () => () => {
       clearDiagramShareMeta(DEFAULT_PAGE_TITLE);
