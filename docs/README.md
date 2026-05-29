@@ -10,6 +10,7 @@
 | [api-usage.md](./api-usage.md) | 関係データの保存形式、エンドポイント一覧（概要） |
 | [frontend.md](./frontend.md) | 画面の挙動、相関図タブ、フロントテスト |
 | [demo-license.md](./demo-license.md) | デモ URL、ライセンス・データソース |
+| [ci-pr-review.md](./ci-pr-review.md) | CI: AI PR 差分レビュー（NIM / Gemini 切替） |
 
 API の詳細（認証、パラメータ、レスポンス例、レート制限、エラー）は [api.md](./api.md) を参照してください。
 
