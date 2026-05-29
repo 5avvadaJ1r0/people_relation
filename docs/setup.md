@@ -27,6 +27,126 @@ docker compose -f docker/docker-compose.yml --env-file .env up --build
 docker compose -f docker/docker-compose.yml --env-file .env down
 ```
 
+## 相関図 URL 共有の環境変数
+
+相関図の「URLを共有」および X（Twitter）カード用画像を使う場合、**FastAPI（`api` サービス）** のみ次の環境変数が必要です。`relation_extract_worker` は相関図共有 API を呼ばないため、**`DIAGRAM_SHARE_SECRET_KEY` は worker には不要**です（同じ `.env` を読んでも未設定のままで worker は動作します）。
+
+| 変数 | 必須 | 説明 |
+| --- | --- | --- |
+| `DIAGRAM_SHARE_SECRET_KEY` | 共有機能を使うとき | Fernet 形式の暗号化鍵（下記手順で生成） |
+| `PUBLIC_APP_URL` | 本番・OG 推奨 | ユーザーが開く共有 URL のオリジン（末尾スラッシュなし）。例: `https://example.com` |
+| `PUBLIC_API_URL` | 本番・OG 推奨 | OG 画像 URL の API ベース（`/api` まで含む）。例: `https://example.com/api` |
+| `REDIS_URL` | OG 画像を使うとき | 共有 PNG の保存先（既存の Redis 設定を流用） |
+
+開発時の例（Docker Compose + nginx `8080`）:
+
+```bash
+PUBLIC_APP_URL=http://localhost:8080
+PUBLIC_API_URL=http://localhost:8080/api
+```
+
+Vite のみ（`5173`）で試す場合:
+
+```bash
+PUBLIC_APP_URL=http://localhost:5173
+PUBLIC_API_URL=http://localhost:5173/api
+```
+
+### `DIAGRAM_SHARE_SECRET_KEY` の生成（本番・ステージング）
+
+鍵は **環境ごとに 1 本**、ランダム生成した値を Git にコミットせず、`.env` やシークレット管理にだけ保存してください。
+
+Fernet は **`cryptography` パッケージに含まれる**機能です（`fernet` という別 pip パッケージはありません）。API 本体は `backend/requirements.txt` に `cryptography` を依存として持っていますが、**ホストの素の `python3` には入っていない**ことが多いです。次のいずれかで実行してください。
+
+**A. バックエンド venv を使う（systemd / 直接デプロイ）**
+
+本リポジトリの API は **Python 3.12** 想定です（`docker/backend/Dockerfile` と同じ）。`python3` が 3.14 など別バージョンだと、venv 内で **実行する Python と pip が入れた先がずれ**、`pip install` 後も `ModuleNotFoundError: No module named 'cryptography'` になることがあります。
+
+```bash
+cd backend
+# 初回、または venv が壊れているとき（下記「うまくいかないとき」参照）
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+`python3.12` が無い場合は `pyenv` / `apt install python3.12-venv` などで 3.12 を用意するか、**B の Docker** で鍵だけ生成してください。
+
+**A がうまくいかないとき（よくある原因）**
+
+| 症状 | 原因 | 対処 |
+| --- | --- | --- |
+| `pip install` は成功するが `cryptography` が無い | `.venv/bin/python`（例: 3.12）と、pip がパッケージを入れたバージョン（例: 3.14）が不一致 | venv を作り直す（下記） |
+| `python3.12: command not found` | ホストに 3.12 が無い | 3.12 を入れるか **B** を使う |
+
+venv の作り直し:
+
+```bash
+cd backend
+rm -rf .venv
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -c "import cryptography; print(cryptography.__version__)"
+.venv/bin/python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+**応急**（venv を触らず鍵だけ欲しい）: pip が入れた方の Python を明示する（`ls .venv/lib/` で `python3.14` などがある場合）:
+
+```bash
+.venv/bin/python3.14 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+ただし API 起動も同じ venv の `python` を使うなら、**作り直しの方が安全**です。
+
+**B. Docker Compose の api コンテナで生成（推奨・ローカルに cryptography 不要）**
+
+リポジトリルートで:
+
+```bash
+docker compose -f docker/docker-compose.yml run --rm api \
+  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+**C. 鍵生成だけホストに入れる**
+
+```bash
+python3 -m pip install cryptography
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+`ModuleNotFoundError: No module named 'cryptography'` が出た場合は、上記 A〜C のどれかを使ってください（システム Python にグローバル `pip install` するより A または B が安全です）。
+
+標準出力の 1 行（44 文字程度、`A-Za-z0-9_-=`）を `.env` に追記します。
+
+```bash
+DIAGRAM_SHARE_SECRET_KEY=（上記コマンドの出力をそのまま貼り付け）
+```
+
+Docker Compose 利用時は **リポジトリルートの `.env`**（`docker compose --env-file .env` で読むファイル）に書き、**`api` コンテナを再起動**してください。`backend/.env` だけに書いても Compose の `api` には渡りません。
+
+```bash
+# ルート .env に追記したあと
+docker compose -f docker/docker-compose.yml --env-file .env up -d --force-recreate api
+```
+
+**`apiPostDiagramShare failed: 503`** が出るとき:
+
+| 確認 | 内容 |
+| --- | --- |
+| 変数名 | `DIAGRAM_SHARE_SECRET_KEY`（スペル・大文字小文字） |
+| 置き場所 | Docker 利用時は **リポジトリルート** の `.env` |
+| 値 | Fernet 生成コマンドの 1 行そのまま（余計な引用符・改行・先頭スペースなし） |
+| 再起動 | `.env` 変更後は `api` を recreate（上記コマンド） |
+| コンテナ内 | `docker compose ... exec api printenv DIAGRAM_SHARE_SECRET_KEY` で空でないこと |
+
+503 の本文が「相関図共有は未設定です」なら鍵が空、「形式が不正です」なら鍵の文字列が Fernet 形式ではありません。
+
+注意:
+
+- 鍵を変更すると、既に発行済みの `diagram_share_id` 付き URL はすべて無効になります。
+- 本番と開発で同じ鍵を使い回さないでください。
+- 形式の詳細と API 仕様は [api.md の §4-4](./api.md#4-4-相関図-url-共有暗号化-share_id) を参照してください。
+
 ## 起動方法（Gunicorn：複数ワーカー）
 
 VM・自前サーバーなど「プロセスを複数立てたい」環境では、親プロセスに **Gunicorn**、ワーカーに **Uvicorn**（`uvicorn.workers.UvicornWorker`）を使うのが一般的です。`backend/requirements.txt` に `gunicorn` を含めています。
@@ -74,13 +194,16 @@ sudo mkdir -p /var/www/people_relation
 sudo chown -R people_relation:people_relation /var/www/people_relation
 ```
 
-バックエンドの venv と依存関係（API と同じ手順で可）:
+バックエンドの venv と依存関係（**必ず `python3.12` で venv を作成**し、`pip` / `python` は `.venv/bin/` 配下だけを使う）:
 
 ```bash
 cd /var/www/people_relation/backend
 sudo -u people_relation python3.12 -m venv .venv
 sudo -u people_relation .venv/bin/pip install -r requirements.txt
+sudo -u people_relation .venv/bin/python -c "import cryptography"
 ```
+
+`DIAGRAM_SHARE_SECRET_KEY` の生成も同じ `.venv/bin/python` で行う（[相関図 URL 共有の環境変数](#相関図-url-共有の環境変数) の手順 A）。
 
 ### 2. 環境変数ファイル
 

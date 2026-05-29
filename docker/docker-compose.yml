@@ -38,6 +38,10 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required (set it in .env)}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:5173}
+      # 相関図 URL 共有（未設定時は POST /diagram/share が 503）
+      DIAGRAM_SHARE_SECRET_KEY: ${DIAGRAM_SHARE_SECRET_KEY:-}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:8080}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8080/api}
     volumes:
       - ../backend:/app
     depends_on:

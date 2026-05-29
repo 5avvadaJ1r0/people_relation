@@ -13,9 +13,14 @@ import {
 } from "../lib/diagramConstants";
 import {
   apiPostDiagramCoreNetwork,
+  apiPostDiagramShare,
+  apiPutDiagramShareOgImage,
   apiSearchPersonExecutedMasters,
 } from "../lib/api";
-import { canShareDiagramImage } from "../lib/correlationDiagramExport";
+import { buildDiagramShareText, canShareDiagramImage } from "../lib/correlationDiagramExport";
+import { buildDiagramSharePageUrl } from "../lib/diagramShare";
+import type { DiagramShareBootstrap } from "../hooks/peopleRelationApp/useDiagramShareFromUrl";
+import { applyDiagramShareMeta } from "../lib/diagramShareMeta";
 import type { ApiPerson } from "../lib/types";
 import {
   filterDiagramRowsForDisplay,
@@ -123,6 +128,24 @@ const IconCircleXmark = () => (
 );
 
 /** Font Awesome Solid「arrow-up-from-bracket」相当（Font Awesome Free 6.5.2 / CC BY 4.0） */
+const IconLink = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={18}
+    height={18}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+  </svg>
+);
+
 const IconArrowUpFromBracket = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -149,6 +172,9 @@ type DiagramThresholdButtonsProps = {
   diagramShareReady: boolean;
   diagramShareBusy: boolean;
   onShareDiagramImage: () => void;
+  diagramUrlShareBusy: boolean;
+  diagramUrlShareDone: boolean;
+  onShareDiagramUrl: () => void;
 };
 
 const DiagramThresholdButtons = ({
@@ -164,6 +190,9 @@ const DiagramThresholdButtons = ({
   diagramShareReady,
   diagramShareBusy,
   onShareDiagramImage,
+  diagramUrlShareBusy,
+  diagramUrlShareDone,
+  onShareDiagramUrl,
 }: DiagramThresholdButtonsProps) => (
   <div className="diagramThresholdButtons">
     <button
@@ -207,6 +236,32 @@ const DiagramThresholdButtons = ({
       <IconFitDisplay />
       <span className="diagramThresholdBtnLabel">表示サイズ最適化</span>
     </button>
+    {hasDiagram ? (
+      <button
+        type="button"
+        className="diagramThresholdBtn diagramShareBtn"
+        disabled={busy || !diagramShareReady || diagramUrlShareBusy}
+        aria-label={
+          diagramUrlShareBusy
+            ? "URLを共有（準備中）"
+            : diagramUrlShareDone
+              ? "URLをコピー済み"
+              : "URLを共有"
+        }
+        aria-busy={diagramUrlShareBusy}
+        title="相関図の表示条件を含む URL をコピー（X のカード用画像も登録）"
+        onClick={() => void onShareDiagramUrl()}
+      >
+        <IconLink />
+        <span className="diagramThresholdBtnLabel">
+          {diagramUrlShareBusy
+            ? "準備中…"
+            : diagramUrlShareDone
+              ? "URLコピー済"
+              : "URLを共有"}
+        </span>
+      </button>
+    ) : null}
     {hasDiagram && webShareImageSupported ? (
       <button
         type="button"
@@ -231,6 +286,9 @@ const DiagramThresholdButtons = ({
 export type DiagramTabPanelProps = {
   center: ApiPerson[];
   setCenter: Dispatch<SetStateAction<ApiPerson[]>>;
+  shareBootstrap?: DiagramShareBootstrap | null;
+  shareLoadError?: string | null;
+  shareLoading?: boolean;
   /** サジェスト空時の案内から「関連者リストアップ」タブへ切替え、主体者入力に相関図タブの入力文字列を渡す */
   onOpenListTabWithPrincipalQuery?: (query: string) => void;
 };
@@ -238,6 +296,9 @@ export type DiagramTabPanelProps = {
 export const DiagramTabPanel = ({
   center,
   setCenter,
+  shareBootstrap = null,
+  shareLoadError = null,
+  shareLoading = false,
   onOpenListTabWithPrincipalQuery,
 }: DiagramTabPanelProps) => {
   const [query, setQuery] = useState("");
@@ -265,7 +326,13 @@ export const DiagramTabPanel = ({
   const [diagramShareError, setDiagramShareError] = useState<string | null>(
     null,
   );
+  const [diagramUrlShareBusy, setDiagramUrlShareBusy] = useState(false);
+  const [diagramUrlShareDone, setDiagramUrlShareDone] = useState(false);
+  const appliedShareIdRef = useRef<string | null>(null);
   const webShareImageSupported = useMemo(() => canShareDiagramImage(), []);
+
+  const panelError = error ?? shareLoadError;
+  const panelBusy = busy || shareLoading;
 
   const selectableMatches = useMemo(
     () => matches.filter((p) => !center.some((c) => c.id === p.id)),
@@ -346,6 +413,27 @@ export const DiagramTabPanel = ({
     center.length >= MIN_DIAGRAM_CENTER &&
     center.length <= MAX_DIAGRAM_CENTER;
 
+  const applyNetworkResponse = useCallback(
+    (
+      gt: number,
+      data: {
+        center_titles: string[];
+        pairs: { person1: string; person2: string; total_point: number }[];
+      },
+    ) => {
+      setTotalPointGt(gt);
+      setMembers(data.center_titles);
+      setAllRows(
+        data.pairs.map((x) => ({
+          a: x.person1,
+          b: x.person2,
+          points: x.total_point,
+        })),
+      );
+    },
+    [],
+  );
+
   /** `SUM(point) > total_point_gt` で無向ペアを絞り込む。gt を上げると関連者は減り、下げると増える。 */
   const loadDiagramWithGt = async (gt: number) => {
     if (!canBuild) return;
@@ -357,15 +445,7 @@ export const DiagramTabPanel = ({
         center_titles: titles,
         total_point_gt: gt,
       });
-      setTotalPointGt(gt);
-      setMembers(data.center_titles);
-      setAllRows(
-        data.pairs.map((x) => ({
-          a: x.person1,
-          b: x.person2,
-          points: x.total_point,
-        })),
-      );
+      applyNetworkResponse(gt, data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -390,6 +470,69 @@ export const DiagramTabPanel = ({
     () => members.length > 0 || allRows.length > 0,
     [members.length, allRows.length],
   );
+
+  const loadDiagramWithGtForCenter = useCallback(
+    async (persons: ApiPerson[], gt: number) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const data = await apiPostDiagramCoreNetwork({
+          center_titles: persons.map((c) => c.title),
+          total_point_gt: gt,
+        });
+        applyNetworkResponse(gt, data);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [applyNetworkResponse],
+  );
+
+  useEffect(() => {
+    if (!shareBootstrap) return;
+    if (appliedShareIdRef.current === shareBootstrap.shareId) return;
+    appliedShareIdRef.current = shareBootstrap.shareId;
+    setShowPeerLinks(shareBootstrap.showPeerLinks);
+    void loadDiagramWithGtForCenter(
+      shareBootstrap.centerPersons,
+      shareBootstrap.totalPointGt,
+    );
+  }, [shareBootstrap, loadDiagramWithGtForCenter]);
+
+  const onShareDiagramUrl = useCallback(async () => {
+    if (center.length === 0 || !hasDiagram) return;
+    setDiagramShareError(null);
+    setDiagramUrlShareDone(false);
+    setDiagramUrlShareBusy(true);
+    try {
+      const { share_id: shareId } = await apiPostDiagramShare({
+        center_person_ids: center.map((c) => c.id),
+        show_peer_links: showPeerLinks,
+        total_point_gt: totalPointGt,
+      });
+      const png = await diagramViewRef.current?.capturePngBlob();
+      if (png) {
+        await apiPutDiagramShareOgImage(shareId, png);
+      }
+      const pageUrl = buildDiagramSharePageUrl(shareId);
+      await navigator.clipboard.writeText(pageUrl);
+      const titles = members.length > 0 ? members : center.map((c) => c.title);
+      applyDiagramShareMeta({
+        shareId,
+        title: `相関図: ${titles.join("、")}`,
+        description: buildDiagramShareText(titles),
+        hasOgImage: Boolean(png),
+      });
+      setDiagramUrlShareDone(true);
+      window.setTimeout(() => setDiagramUrlShareDone(false), 4000);
+    } catch (e: unknown) {
+      setDiagramShareError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDiagramUrlShareBusy(false);
+    }
+  }, [center, hasDiagram, members, showPeerLinks, totalPointGt]);
 
   const onShareDiagramImage = useCallback(() => {
     setDiagramShareError(null);
@@ -466,8 +609,8 @@ export const DiagramTabPanel = ({
   return (
     <div className="diagramTabGrid">
       <div className="diagramControlSection">
-        {error ? (
-          <div className="danger diagramControlError">{error}</div>
+        {panelError ? (
+          <div className="danger diagramControlError">{panelError}</div>
         ) : null}
 
         <div className="diagramTopRow">
@@ -498,7 +641,7 @@ export const DiagramTabPanel = ({
                     autoComplete="off"
                     value={query}
                     placeholder="氏名の一部を入力して選択"
-                    disabled={busy || center.length >= MAX_DIAGRAM_CENTER}
+                    disabled={panelBusy || center.length >= MAX_DIAGRAM_CENTER}
                     title={
                       center.length >= MAX_DIAGRAM_CENTER
                         ? `中心人物は最大${MAX_DIAGRAM_CENTER}名までです（これ以上追加できません）`
@@ -544,7 +687,7 @@ export const DiagramTabPanel = ({
                       className="textInputRightIcon"
                       aria-label="入力をクリア"
                       title="クリア"
-                      disabled={busy || center.length >= MAX_DIAGRAM_CENTER}
+                      disabled={panelBusy || center.length >= MAX_DIAGRAM_CENTER}
                       onMouseDown={(ev) => ev.preventDefault()}
                       onClick={() => {
                         setQuery("");
@@ -594,7 +737,7 @@ export const DiagramTabPanel = ({
                               ? "diagramSuggestOption diagramSuggestOptionActive"
                               : "diagramSuggestOption"
                           }
-                          disabled={busy}
+                          disabled={panelBusy}
                           onMouseDown={(ev) => ev.preventDefault()}
                           onMouseEnter={() => setHighlightIdx(idx)}
                           onClick={() => addCenter(p)}
@@ -665,7 +808,7 @@ export const DiagramTabPanel = ({
                         type="button"
                         className="diagramChipRemove"
                         aria-label={`${p.title} を外す`}
-                        disabled={busy}
+                        disabled={panelBusy}
                         onClick={() => removeCenter(p.id)}
                       >
                         ×
@@ -679,14 +822,14 @@ export const DiagramTabPanel = ({
                 <button
                   type="button"
                   className="primary"
-                  disabled={busy || !canBuild}
+                  disabled={panelBusy || !canBuild}
                   onClick={() => void buildDiagram()}
                 >
                   相関図を作成する
                 </button>
                 <button
                   type="button"
-                  disabled={busy || center.length === 0}
+                  disabled={panelBusy || center.length === 0}
                   onClick={() => {
                     setCenter([]);
                     setMembers([]);
@@ -727,7 +870,7 @@ export const DiagramTabPanel = ({
               <div className="diagramFlowCardToolbar">
                 {members.length > 0 ? (
                   <DiagramThresholdButtons
-                    busy={busy}
+                    busy={panelBusy}
                     canExpandRelated={canExpandRelated}
                     canShrinkRelated={canShrinkRelated}
                     hasDiagram={hasDiagram}
@@ -739,6 +882,9 @@ export const DiagramTabPanel = ({
                     diagramShareReady={diagramShareReady}
                     diagramShareBusy={diagramShareBusy}
                     onShareDiagramImage={onShareDiagramImage}
+                    diagramUrlShareBusy={diagramUrlShareBusy}
+                    diagramUrlShareDone={diagramUrlShareDone}
+                    onShareDiagramUrl={onShareDiagramUrl}
                   />
                 ) : null}
                 <div className="diagramFlowCardHeaderRight">
@@ -825,7 +971,7 @@ export const DiagramTabPanel = ({
                     <input
                       type="checkbox"
                       checked={showPeerLinks}
-                      disabled={busy}
+                      disabled={panelBusy}
                       onChange={(e) => setShowPeerLinks(e.target.checked)}
                     />
                     <span>関連者同士のリンクを表示</span>
