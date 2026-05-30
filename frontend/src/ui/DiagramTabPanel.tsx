@@ -526,7 +526,7 @@ export const DiagramTabPanel = ({
       const pageUrl = buildDiagramSharePageUrl(shareId);
       await navigator.clipboard.writeText(pageUrl);
       if (gen !== diagramUrlShareGenRef.current) return;
-      const png = await diagramViewRef.current?.capturePngBlob();
+      const png = await diagramViewRef.current?.captureOgPngBlob();
       if (gen !== diagramUrlShareGenRef.current) return;
       if (png) {
         await apiPutDiagramShareOgImage(shareId, png);

@@ -35,6 +35,7 @@ import {
 } from "../lib/diagramGraph";
 import {
   captureCorrelationDiagramPngBlob,
+  captureDiagramShareOgPngBlob,
   shareCorrelationDiagram,
 } from "../lib/correlationDiagramExport";
 import { DimensionalSmoothStepEdge } from "./DimensionalSmoothStepEdge";
@@ -60,6 +61,8 @@ export type CorrelationDiagramViewHandle = {
   shareAsImage: () => Promise<void>;
   /** 共有・OG 用の PNG（プリフェッチ済み Blob を優先） */
   capturePngBlob: () => Promise<Blob>;
+  /** URL 共有の OGP 用（2MB 未満・高解像度プリフェッチは使わない） */
+  captureOgPngBlob: () => Promise<Blob>;
   /** ズーム・パンを調整し、ノード全体が表示領域に収まるようにする */
   fitDisplayToViewport: () => void;
 };
@@ -386,6 +389,20 @@ export const CorrelationDiagramView = forwardRef<
           throw new Error("相関図の描画領域が見つかりません。");
         }
         return captureCorrelationDiagramPngBlob(viewportEl, {
+          getNodes: () => rfNodes,
+        });
+      },
+      captureOgPngBlob: async () => {
+        if (empty) {
+          throw new Error("相関図がありません。");
+        }
+        const viewportEl = document.querySelector(
+          `#${CORRELATION_FLOW_DOM_ID} .react-flow__viewport`,
+        ) as HTMLElement | null;
+        if (!viewportEl) {
+          throw new Error("相関図の描画領域が見つかりません。");
+        }
+        return captureDiagramShareOgPngBlob(viewportEl, {
           getNodes: () => rfNodes,
         });
       },
