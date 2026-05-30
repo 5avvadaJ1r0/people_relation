@@ -329,6 +329,8 @@ export const DiagramTabPanel = ({
   const [diagramUrlShareBusy, setDiagramUrlShareBusy] = useState(false);
   const [diagramUrlShareDone, setDiagramUrlShareDone] = useState(false);
   const appliedShareIdRef = useRef<string | null>(null);
+  /** 共有 URL 表示時に全画面化した share_id（同一 ID で再展開しない） */
+  const shareExpandedIdRef = useRef<string | null>(null);
   const diagramUrlShareGenRef = useRef(0);
   const diagramUrlShareDoneTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(
     null,
@@ -504,6 +506,17 @@ export const DiagramTabPanel = ({
       shareBootstrap.totalPointGt,
     );
   }, [shareBootstrap, loadDiagramWithGtForCenter]);
+
+  useEffect(() => {
+    if (!shareBootstrap) {
+      shareExpandedIdRef.current = null;
+      return;
+    }
+    if (!hasDiagram || panelBusy) return;
+    if (shareExpandedIdRef.current === shareBootstrap.shareId) return;
+    shareExpandedIdRef.current = shareBootstrap.shareId;
+    setDiagramFlowExpanded(true);
+  }, [shareBootstrap, hasDiagram, panelBusy]);
 
   const onShareDiagramUrl = useCallback(async () => {
     if (center.length === 0 || !hasDiagram) return;
