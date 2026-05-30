@@ -3,11 +3,30 @@ import type {
   ApiRelation,
   ApiRelationAggregate,
   DiagramCoreNetworkOut,
+  DiagramShareOut,
+  DiagramShareTokenOut,
   RelationIn,
 } from "./types";
 import { resolveApiBaseUrl } from "./apiBase";
 
 const API_BASE = resolveApiBaseUrl();
+
+const readApiErrorDetail = async (res: Response): Promise<string> => {
+  const ct = res.headers.get("content-type") ?? "";
+  try {
+    if (ct.includes("application/json")) {
+      const j = (await res.json()) as { detail?: unknown };
+      if (j.detail !== undefined) {
+        return typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+      }
+    } else {
+      return (await res.text()).slice(0, 240).replace(/\s+/g, " ");
+    }
+  } catch {
+    return "";
+  }
+  return "";
+};
 
 const parseJsonOrThrow = async <T>(res: Response, label: string): Promise<T> => {
   const ct = res.headers.get("content-type") ?? "";
@@ -65,26 +84,71 @@ export const apiPostDiagramCoreNetwork = async (
     signal: init?.signal,
   });
   if (!res.ok) {
-    const ct = res.headers.get("content-type") ?? "";
-    let detail = "";
-    try {
-      if (ct.includes("application/json")) {
-        const j = (await res.json()) as { detail?: unknown };
-        if (j.detail !== undefined) {
-          detail =
-            typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
-        }
-      } else {
-        detail = (await res.text()).slice(0, 240).replace(/\s+/g, " ");
-      }
-    } catch {
-      detail = "";
-    }
+    const detail = await readApiErrorDetail(res);
     throw new Error(
       `apiPostDiagramCoreNetwork failed: ${res.status}${detail ? ` — ${detail}` : ""}`,
     );
   }
   return await parseJsonOrThrow<DiagramCoreNetworkOut>(res, "apiPostDiagramCoreNetwork");
+};
+
+export const apiPostDiagramShare = async (
+  body: {
+    center_person_ids: number[];
+    show_peer_links: boolean;
+    total_point_gt: number;
+  },
+  init?: { signal?: AbortSignal },
+): Promise<DiagramShareTokenOut> => {
+  const url = `${API_BASE}/v1/diagram/share`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: init?.signal,
+  });
+  if (!res.ok) {
+    const detail = await readApiErrorDetail(res);
+    throw new Error(
+      `apiPostDiagramShare failed: ${res.status}${detail ? ` — ${detail}` : ""}`,
+    );
+  }
+  return await parseJsonOrThrow<DiagramShareTokenOut>(res, "apiPostDiagramShare");
+};
+
+export const apiGetDiagramShare = async (
+  shareId: string,
+  init?: { signal?: AbortSignal },
+): Promise<DiagramShareOut> => {
+  const url = `${API_BASE}/v1/diagram/share/${encodeURIComponent(shareId)}`;
+  const res = await fetch(url, { signal: init?.signal });
+  if (!res.ok) {
+    const detail = await readApiErrorDetail(res);
+    throw new Error(
+      `apiGetDiagramShare failed: ${res.status}${detail ? ` — ${detail}` : ""}`,
+    );
+  }
+  return await parseJsonOrThrow<DiagramShareOut>(res, "apiGetDiagramShare");
+};
+
+export const apiPutDiagramShareOgImage = async (
+  shareId: string,
+  png: Blob,
+  init?: { signal?: AbortSignal },
+): Promise<void> => {
+  const url = `${API_BASE}/v1/diagram/share/${encodeURIComponent(shareId)}/og-image`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "image/png" },
+    body: png,
+    signal: init?.signal,
+  });
+  if (!res.ok) {
+    const detail = await readApiErrorDetail(res);
+    throw new Error(
+      `apiPutDiagramShareOgImage failed: ${res.status}${detail ? ` — ${detail}` : ""}`,
+    );
+  }
 };
 
 export const apiGetRelations = async (personId: number): Promise<ApiRelation[]> => {

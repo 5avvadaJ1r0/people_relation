@@ -52,11 +52,14 @@ const CORRELATION_DIAGRAM_FIT_VIEW_OPTIONS = {
 type InnerShareApi = {
   /** プリフェッチ済み Blob で共有（`navigator.share` は同期的に呼ぶ） */
   shareFromPrefetched: () => Promise<void>;
+  getPrefetchedBlob: () => Blob | null;
 };
 
 /** 親（ヘッダー等）から `navigator.share` で画像共有するときに使う ref。 */
 export type CorrelationDiagramViewHandle = {
   shareAsImage: () => Promise<void>;
+  /** 共有・OG 用の PNG（プリフェッチ済み Blob を優先） */
+  capturePngBlob: () => Promise<Blob>;
   /** ズーム・パンを調整し、ノード全体が表示領域に収まるようにする */
   fitDisplayToViewport: () => void;
 };
@@ -92,6 +95,7 @@ const CorrelationDiagramShareBind = ({
         }
         return shareCorrelationDiagram(blob);
       },
+      getPrefetchedBlob: () => prefetchedBlobRef.current,
     };
     return () => {
       innerShareApiRef.current = null;
@@ -369,12 +373,28 @@ export const CorrelationDiagramView = forwardRef<
         }
         return share();
       },
+      capturePngBlob: async () => {
+        if (empty) {
+          throw new Error("相関図がありません。");
+        }
+        const cached = innerShareApiRef.current?.getPrefetchedBlob();
+        if (cached) return cached;
+        const viewportEl = document.querySelector(
+          `#${CORRELATION_FLOW_DOM_ID} .react-flow__viewport`,
+        ) as HTMLElement | null;
+        if (!viewportEl) {
+          throw new Error("相関図の描画領域が見つかりません。");
+        }
+        return captureCorrelationDiagramPngBlob(viewportEl, {
+          getNodes: () => rfNodes,
+        });
+      },
       fitDisplayToViewport: () => {
         if (empty) return;
         fitViewActionRef.current?.();
       },
     }),
-    [empty],
+    [empty, rfNodes],
   );
 
   useEffect(() => {

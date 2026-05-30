@@ -15,9 +15,17 @@ if _test_db.exists():
     _test_db.unlink()
 os.environ.setdefault("DATABASE_URL", f"sqlite+pysqlite:///{_test_db.resolve()}")
 os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:9/0")
+# 相関図共有トークン（Fernet）用の固定テスト鍵
+os.environ.setdefault(
+    "DIAGRAM_SHARE_SECRET_KEY",
+    "7CAXratP6jJ7LqaU3UHH1ckBhmUG5prGYQswS4Ry1m8=",
+)
 
 from app.db import engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services.diagram_share_token import init_diagram_share_crypto  # noqa: E402
+
+init_diagram_share_crypto()
 
 
 @pytest.fixture(scope="session")

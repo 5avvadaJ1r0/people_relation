@@ -186,6 +186,11 @@ FastAPI標準のエラー応答を返します。
 | GET | `/api/v1/person/{person_id}/relations` | 主体→関連（最大50件） |
 | GET | `/api/v1/person/{person_id}/relations_aggregate` | 双方向集計（最大50件→total でソート） |
 | POST | `/api/v1/diagram/core_network` | 中心人物（1〜10名の title）に基づく無向ペア集約エッジ取得 |
+| POST | `/api/v1/diagram/share` | 相関図共有用 `share_id`（暗号化トークン）の発行 |
+| GET | `/api/v1/diagram/share/{share_id}` | 共有 ID の復号と中心人物・表示条件の取得 |
+| PUT | `/api/v1/diagram/share/{share_id}/og-image` | X / OGP 用相関図 PNG の保存（Redis） |
+| GET | `/api/v1/diagram/share/{share_id}/og-image` | 保存済み OGP 画像の配信 |
+| GET | `/api/v1/diagram/share/{share_id}/card` | SNS クローラ向け HTML（Twitter Card 等） |
 | GET | `/api/v1/wiki/person_search` | Wikipedia 検索 + 人物判定（JSON） |
 
 ### 1) ヘルスチェック
@@ -510,6 +515,88 @@ sequenceDiagram
 - **レート制限**: 特になし
 - **エラー**
   - **422**: 中心人物が 1〜10 名のユニークな `title` に正規化できない場合、`total_point_gt` が負、または JSON 形式不正
+
+### 4-4) 相関図 URL 共有（暗号化 `share_id`）
+
+フロントの共有 URL 例: `{PUBLIC_APP_URL}/?diagram_share_id={share_id}`（開発時は `http://localhost:5173/?diagram_share_id=...`）。
+
+`share_id` は次の JSON を **Fernet 可逆暗号化**した URL-safe 文字列（環境変数 `DIAGRAM_SHARE_SECRET_KEY`、[`cryptography.fernet.Fernet`](https://cryptography.io/en/latest/fernet/) 形式の鍵）。**鍵の生成手順**は [setup.md の「相関図 URL 共有の環境変数」](./setup.md#相関図-url-共有の環境変数) を参照。
+
+```json
+{
+  "v": 1,
+  "c": [1, 2],
+  "p": false,
+  "t": 1
+}
+```
+
+| フィールド | 意味 |
+|-----------|------|
+| `c` | 中心人物の `person.id`（1〜10、ユニーク） |
+| `p` | 関連者同士のリンクを表示するか |
+| `t` | `SUM(point) > t` のしきい値（`total_point_gt`） |
+
+#### `POST /api/v1/diagram/share`
+
+- **用途**: 上記ペイロードから `share_id` を発行する（存在しない `person.id` は **404**）。
+- **認証**: なし
+- **リクエスト**: `DiagramShareCreateIn`（`center_person_ids`, `show_peer_links`, `total_point_gt`）
+- **レスポンス 200**: `{ "share_id": "..." }`
+
+#### `GET /api/v1/diagram/share/{share_id}`
+
+- **用途**: 共有 URL オープン時にフロントが中心人物と表示条件を復元する。
+- **レスポンス 200**: `DiagramShareOut`（`center_persons` に `PersonSearchOut[]` を含む）
+- **エラー**: **400** 無効トークン、**404** 人物欠落、**503** 鍵未設定
+
+#### `PUT /api/v1/diagram/share/{share_id}/og-image`
+
+- **用途**: 「URLを共有」時にフロントが生成した相関図 PNG を Redis に保存（TTL 30 日、最大 2MB）。
+- **Content-Type**: `image/png`（生バイト）
+- **検証**: `Content-Type` は `image/png` のみ。**415** で拒否。PNG シグネチャ・IHDR チャンク・IEND の存在。`Content-Length` およびストリーム読み込みは 2MB で打ち切り（超過時はストリームを閉じる）。
+- **レスポンス**: **204**、不正 Content-Type **415**、不正 PNG **400**、サイズ超過 **413**
+
+#### `GET /api/v1/diagram/share/{share_id}/og-image`
+
+- **用途**: `twitter:image` / `og:image` の実体（Twitter Card 用）。
+- **レスポンス**: **200** `image/png`、未保存時 **404**
+
+#### `GET /api/v1/diagram/share/{share_id}/card`
+
+- **用途**: X（Twitter）等のクローラが `diagram_share_id` 付きトップ URL にアクセスしたとき、OG / Twitter Card 用 HTML を返す（人間ブラウザは `meta refresh` でフロント URL へ）。
+- **環境変数**（設定手順は [setup.md](./setup.md#相関図-url-共有の環境変数)）
+  - `DIAGRAM_SHARE_SECRET_KEY`: Fernet 鍵（`python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` で生成）
+  - `PUBLIC_APP_URL`: 共有ページのオリジン（例: `http://localhost:5173`）
+  - `PUBLIC_API_URL`: OG 画像の絶対 URL ベース（例: `http://localhost:5173/api` または `https://example.com/api`）
+- **開発**: Vite / nginx が SNS クローラの `GET /?diagram_share_id=...` を本エンドポイントへプロキシする。
+
+#### 通信シーケンス（URL 共有）
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as ユーザー
+    participant FE as Frontend
+    participant API as FastAPI
+    participant R as Redis
+
+    U->>FE: 「URLを共有」
+    FE->>API: POST /api/v1/diagram/share
+    API-->>FE: share_id
+    FE->>FE: 相関図 PNG 生成
+    FE->>API: PUT .../og-image (PNG)
+    API->>R: SETEX diagram_share:og:{share_id}
+    FE->>U: クリップボードに ?diagram_share_id=...
+
+    Note over U: 別ユーザーが URL を開く
+    U->>FE: GET /?diagram_share_id=...
+    FE->>API: GET /api/v1/diagram/share/{share_id}
+    API-->>FE: center_persons + 表示条件
+    FE->>API: POST /api/v1/diagram/core_network
+    API-->>FE: pairs
+    FE->>FE: React Flow 描画
+```
 
 #### 通信シーケンス（相関図作成）
 
@@ -975,19 +1062,12 @@ sequenceDiagram
 - **認証**: なし（公開 API と同様）。
 - **クエリ**
   - `q` (string, 必須, min_length=1): 検索語（氏名など）
-- **レスポンス 200** (`application/json`):
-
-```json
-{
-  "wiki": [
-    { "title": "山田太郎", "pageid": 12345, "snippet": "…" }
-  ],
-  "empty_message": null
-}
-```
-
-  - 人物のみが残らなかった場合は `wiki: []` かつ `empty_message` に理由文言（例: `"該当人物はいません"`）
-- **エラー**: 外部 API 障害等で処理不能な場合は **502**（`detail` にメッセージ）
+- **レスポンス**: `Content-Type: text/event-stream`（UTF-8）。本文は `data: {JSON}\n\n` を繰り返し送る。
+- **イベント種別**
+  - **進捗**: `{"type":"progress","phase":"検索結果の人物判定","done":3,"total":20}`（`phase` は処理段階の日本語ラベル）
+  - **完了**: `{"type":"search_result","wiki":[{"title":"...","pageid":123,"snippet":"..."}],"emptyMessage":null}`  
+    - 人物のみが残らなかった場合は `wiki: []` かつ `emptyMessage` に理由文言（例: 「該当人物はいません」）
+  - **エラー**: `{"type":"error","message":"..."}` の後にストリーム終了
 - **外部 API（サーバーが呼び出す）**: `https://ja.wikipedia.org/w/api.php`（検索・query・parse 等）、および人物判定は **`is_human_by_title` / `batch_human_checks_with_db_redis_priority`**（DB `wiki_human_cache` → Redis → Wikidata `wbgetentities` →（必要時）Wikipedia `query` →（必要時）Wikidata `wbgetentities(ids)`）と同一キャッシュ階層。
 - **人物判定（検索結果のバッチ）**: `filter_wiki_people_only` は **`batch_human_checks_with_db_redis_priority`** を用い、バッチ内タイトルについて **`wiki_human_cache` を URL 単位で DB 一括取得**する。未命中のみ Redis `MGET`、さらに未命中のみ **既定では `live_resolve_human_checks_wbget_batch`（`wbgetentities` を最大 50 タイトル／回）** を実行する。
 - **レート制限**: サーバー側で Wikipedia 向けリクエストに **最小間隔（約150ms）** と **429/503/504 時の指数バックオフ再試行** を適用。
@@ -1033,6 +1113,7 @@ sequenceDiagram
 
 - 2026-05-27: Wikipedia 関連の SSE エンドポイントを廃止。**`GET /api/v1/wiki/person_search`**（JSON）のみ公開。旧 **`person_search_sse`** / **`extract_relations_sse`** は削除。2-hop 抽出は **`app.worker.relation_extract`** のみ（[§8-2](#8-2-2-hop-関連抽出内部ワーカー)）。
 - 2026-05-19: **相関図作成**の実行 SQL を [§4-3 実行 SQL（相関図作成）](#実行-sql相関図作成) に追記。正規化は HTTP では **422**（Pydantic）、しきい値 UI は **「関連者を増やす／減らす」** に実装を合わせて記述を修正。
+- 2026-05-29: **相関図 URL 共有**（`POST/GET /api/v1/diagram/share`、`og-image`、`card`）。`DIAGRAM_SHARE_SECRET_KEY` / `PUBLIC_APP_URL` / `PUBLIC_API_URL` を追加（[§4-4](#4-4-相関図-url-共有暗号化-share_id)）。
 - 2026-05-19: **`POST /api/v1/diagram/core_network`** の中心人物を **1〜10 名**に拡張（従来は 2〜10 名）。関連者間エッジはネットワーク内の無向ペア集約で返す（[§4-3](#4-3-相関図エッジ取得中心人物-110-名)）。
 - 2026-05-17: Wikipedia リンク集計のノイズ節除外を **`脚注`・`出典`・`参考文献`・`関連項目`・`外部リンク`** に統一（wikitext / parse HTML / extract プレーンテキスト）。外部リンク最終見出し時の末尾 navbox 除去は従来どおり。
 - 2026-05-14: **`PersonOut` / `PersonSearchOut` の意味整理**: `has_relations` を **`relation` に主体としての行が存在するか** に変更し、**`is_executed_master`**（`executed_as_master` / `executed_as_master_at`）を追加。フロントの **❸ キャッシュ初回読み・「キャッシュ再取得」** は `has_relations` **および** `is_executed_master`（`isPrincipalRelationsCacheSource`）。❷「相関図に追加」等の主体者実行導線は `is_executed_master` を参照する。

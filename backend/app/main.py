@@ -7,12 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.db import init_db
+from app.services.diagram_share_token import init_diagram_share_crypto
 from app.settings import settings
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    init_diagram_share_crypto()
     yield
     from app.services.wiki.human import aclose_shared_http_and_redis
 

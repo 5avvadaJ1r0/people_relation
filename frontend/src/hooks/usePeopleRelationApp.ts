@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ApiPerson } from "../lib/types";
 import type { PeopleRelationAppModel } from "../peopleRelationAppModel";
+import { useDiagramShareFromUrl } from "./peopleRelationApp/useDiagramShareFromUrl";
 import { useMainTabAndDiagram } from "./peopleRelationApp/useMainTabAndDiagram";
 import { usePrincipalDetailPhase } from "./peopleRelationApp/usePrincipalDetailPhase";
 import { usePrincipalSearchPhase } from "./peopleRelationApp/usePrincipalSearchPhase";
@@ -26,6 +27,11 @@ export const usePeopleRelationApp = (): PeopleRelationAppModel => {
   resetDetailRef.current = detail.resetDetail;
 
   const diagramNav = useMainTabAndDiagram();
+
+  const diagramShare = useDiagramShareFromUrl(
+    diagramNav.setMainTab,
+    diagramNav.setDiagramCenter,
+  );
 
   const diagramCenterPersonIds = useMemo(
     () => new Set(diagramNav.diagramCenter.map((p) => p.id)),
@@ -63,6 +69,9 @@ export const usePeopleRelationApp = (): PeopleRelationAppModel => {
       onAddRelatedPersonsToDiagram: diagramNav.addCenterPersonsIfExecutedMasters,
       onRemoveRelatedPersonFromDiagram: diagramNav.removeCenterPerson,
       onOpenListTabWithPrincipalQuery,
+      diagramShareBootstrap: diagramShare.bootstrap,
+      diagramShareLoadError: diagramShare.shareLoadError,
+      diagramShareLoading: diagramShare.shareLoading,
     },
     listSearch: {
       query: search.query,

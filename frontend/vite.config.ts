@@ -1,6 +1,8 @@
 import react from "@vitejs/plugin-react";
+import type { Connect } from "vite";
 import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
+import { isSocialShareCrawler } from "./src/lib/diagramShare";
 
 /**
  * 開発時の /api プロキシ先。
@@ -13,8 +15,54 @@ const devProxyTarget = (mode: string) => {
   return fromEnv || fromFile || "http://127.0.0.1:8000";
 };
 
+const socialCrawlerShareCardMiddleware = (
+  apiOrigin: string,
+): Connect.NextHandleFunction => {
+  return (req, res, next) => {
+    if (req.method !== "GET" || !req.url) {
+      next();
+      return;
+    }
+    const url = new URL(req.url, "http://localhost");
+    const shareId = url.searchParams.get("diagram_share_id")?.trim();
+    const ua = req.headers["user-agent"] ?? "";
+    if (
+      !shareId ||
+      url.pathname !== "/" ||
+      !isSocialShareCrawler(String(ua))
+    ) {
+      next();
+      return;
+    }
+    const target = `${apiOrigin}/api/v1/diagram/share/${encodeURIComponent(shareId)}/card`;
+    void fetch(target)
+      .then(async (upstream) => {
+        const body = await upstream.text();
+        res.statusCode = upstream.status;
+        res.setHeader(
+          "Content-Type",
+          upstream.headers.get("content-type") ?? "text/html; charset=utf-8",
+        );
+        res.end(body);
+      })
+      .catch(() => {
+        next();
+      });
+  };
+};
+
 export default defineConfig(({ mode }) => ({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: "diagram-share-social-card",
+      configureServer(server) {
+        server.middlewares.use(
+          socialCrawlerShareCardMiddleware(devProxyTarget(mode)),
+        );
+      },
+    },
+  ],
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],

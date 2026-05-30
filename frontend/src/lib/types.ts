@@ -71,6 +71,19 @@ export type DiagramCoreNetworkOut = {
   pairs: DiagramRelationPair[];
 };
 
+export type DiagramShareTokenOut = {
+  share_id: string;
+};
+
+export type DiagramShareOut = {
+  share_id: string;
+  center_person_ids: number[];
+  show_peer_links: boolean;
+  total_point_gt: number;
+  center_persons: ApiPerson[];
+  has_og_image: boolean;
+};
+
 export type ApiRelationAggregate = {
   master: {
     id: number;

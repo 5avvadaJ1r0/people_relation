@@ -136,6 +136,15 @@ def get_person(db: Session, person_id: int) -> Person | None:
     return db.scalar(select(Person).where(Person.id == person_id))
 
 
+def list_persons_by_ids(db: Session, *, person_ids: list[int]) -> list[Person]:
+    """指定 ID の人物を取得する（入力順は保証しない）。"""
+    if not person_ids:
+        return []
+    uniq = list(dict.fromkeys(person_ids))
+    rows = db.scalars(select(Person).where(Person.id.in_(uniq))).all()
+    return list(rows)
+
+
 def get_person_by_url(db: Session, *, url: str) -> Person | None:
     """正規化済み URL 相当の `Person.url` で 1 件取得する。"""
     url_n = normalize_url(url)

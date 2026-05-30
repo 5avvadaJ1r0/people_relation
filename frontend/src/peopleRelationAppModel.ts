@@ -1,5 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { MainAppTab, SelectedPrincipal } from "./appScreenTypes";
+import type { DiagramShareBootstrap } from "./hooks/peopleRelationApp/useDiagramShareFromUrl";
 import type { ApiPerson, RelationView } from "./lib/types";
 
 /** 主体者入力（person.name 部分一致サジェスト） */
@@ -47,6 +48,10 @@ export type PeopleRelationNavModel = {
   onRemoveRelatedPersonFromDiagram: (personId: number) => void;
   /** 相関図タブから「関連者リストアップ」タブへ切替え、主体者入力欄に `query` を反映する */
   onOpenListTabWithPrincipalQuery: (query: string) => void;
+  /** `?diagram_share_id=` から復元した相関図の表示条件（DiagramTabPanel がネットワークを取得する） */
+  diagramShareBootstrap: DiagramShareBootstrap | null;
+  diagramShareLoadError: string | null;
+  diagramShareLoading: boolean;
 };
 
 /** アプリ全体の ViewModel（画面コンポーネントへはこの単位で渡す） */

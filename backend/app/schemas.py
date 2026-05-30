@@ -128,3 +128,38 @@ class DiagramRelationPairOut(BaseModel):
 class DiagramCoreNetworkOut(BaseModel):
     center_titles: list[str]
     pairs: list[DiagramRelationPairOut]
+
+
+class DiagramShareCreateIn(BaseModel):
+    """相関図共有 URL 用の暗号化トークン生成リクエスト。"""
+
+    center_person_ids: list[int] = Field(min_length=1, max_length=10)
+    show_peer_links: bool = False
+    total_point_gt: int = Field(
+        default=1,
+        ge=0,
+        description="無向ペア集約後の HAVING 条件: SUM(relation.point) > total_point_gt",
+    )
+
+    @field_validator("center_person_ids")
+    @classmethod
+    def normalize_center_person_ids(cls, v: list[int]) -> list[int]:
+        uniq = list(dict.fromkeys(v))
+        if len(uniq) < 1 or len(uniq) > 10:
+            raise ValueError(
+                "中心人物は1名以上10名以下のユニークな ID を指定してください"
+            )
+        return uniq
+
+
+class DiagramShareTokenOut(BaseModel):
+    share_id: str
+
+
+class DiagramShareOut(BaseModel):
+    share_id: str
+    center_person_ids: list[int]
+    show_peer_links: bool
+    total_point_gt: int
+    center_persons: list[PersonSearchOut]
+    has_og_image: bool = False

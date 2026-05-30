@@ -50,6 +50,9 @@ export const PeopleRelationAppView = ({ model }: PeopleRelationAppViewProps) => 
           <DiagramTabPanel
             center={nav.diagramCenter}
             setCenter={nav.setDiagramCenter}
+            shareBootstrap={nav.diagramShareBootstrap}
+            shareLoadError={nav.diagramShareLoadError}
+            shareLoading={nav.diagramShareLoading}
             onOpenListTabWithPrincipalQuery={nav.onOpenListTabWithPrincipalQuery}
           />
         </div>
