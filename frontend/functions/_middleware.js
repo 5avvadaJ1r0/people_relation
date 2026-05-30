@@ -1,6 +1,5 @@
 /**
- * Cloudflare Pages（プロジェクト Root が `frontend` のとき用）。
- * Root がリポジトリ直下の場合は `/functions/_middleware.js` を使用。
+ * Cloudflare Pages: SNS クローラ向けカード HTML 転送。
  *
  * Environment variables（Production）:
  *   API_BASE_URL = https://people-relation.saikyonews.com/api

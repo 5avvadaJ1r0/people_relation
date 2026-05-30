@@ -54,16 +54,11 @@ PUBLIC_API_URL=http://localhost:5173/api
 
 ### Cloudflare Pages（フロントのみ CDN の場合）
 
-共有 URL が `https://….pages.dev/?diagram_share_id=…` のとき、**X のクローラは JavaScript を実行しない**ため、静的 `index.html` だけでは `og:image` が付きません。`functions/_middleware.js` が、開発時の Vite ミドルウェアと同様に Twitterbot 等を API の `/card` HTML へ転送します。
+共有 URL が `https://….pages.dev/?diagram_share_id=…` のとき、**X のクローラは JavaScript を実行しない**ため、静的 `index.html` だけでは `og:image` が付きません。`frontend/functions/_middleware.js` が、開発時の Vite ミドルウェアと同様に Twitterbot 等を API の `/card` HTML へ転送します。
 
-**`functions` の置き場所**（Cloudflare の **Root directory** に合わせる）:
+**`functions` の置き場所**: Cloudflare の Root directory を `frontend` にし、`frontend/functions/_middleware.js` をデプロイに含める。
 
-| Root directory | `functions` のパス |
-| --- | --- |
-| `frontend` | `frontend/functions/_middleware.js` |
-| リポジトリ直下（出力 `frontend/dist`） | `/functions/_middleware.js` |
-
-デプロイログに **Functions** のビルド行があるか確認してください。無い場合は Root と `functions` の位置がずれています。
+デプロイログに **Functions** のビルド行があるか確認してください。
 
 Pages の **Settings → Environment variables**（Production）に次を設定します（**ビルド専用の `VITE_*` だけでは Functions 実行時に渡りません**）。
 
