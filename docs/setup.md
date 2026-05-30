@@ -52,6 +52,47 @@ PUBLIC_APP_URL=http://localhost:5173
 PUBLIC_API_URL=http://localhost:5173/api
 ```
 
+### Cloudflare Pages（フロントのみ CDN の場合）
+
+共有 URL が `https://….pages.dev/?diagram_share_id=…` のとき、**X のクローラは JavaScript を実行しない**ため、静的 `index.html` だけでは `og:image` が付きません。`functions/_middleware.js` が、開発時の Vite ミドルウェアと同様に Twitterbot 等を API の `/card` HTML へ転送します。
+
+**`functions` の置き場所**（Cloudflare の **Root directory** に合わせる）:
+
+| Root directory | `functions` のパス |
+| --- | --- |
+| `frontend` | `frontend/functions/_middleware.js` |
+| リポジトリ直下（出力 `frontend/dist`） | `/functions/_middleware.js` |
+
+デプロイログに **Functions** のビルド行があるか確認してください。無い場合は Root と `functions` の位置がずれています。
+
+Pages の **Settings → Environment variables**（Production）に次を設定します（**ビルド専用の `VITE_*` だけでは Functions 実行時に渡りません**）。
+
+| 変数 | 例 |
+| --- | --- |
+| `API_BASE_URL` | `https://people-relation.saikyonews.com/api` |
+
+動作確認（応答に `X-Diagram-Share-Card: 1` と `og:image` があること）:
+
+```bash
+curl -sI -A "Twitterbot/1.0" "https://people-relation.pages.dev/?diagram_share_id=<share_id>"
+```
+
+API 側（`backend/.env`）は、共有 URL・画像 URL が実際の公開オリジンと一致すること。
+
+```bash
+PUBLIC_APP_URL=https://people-relation.pages.dev
+PUBLIC_API_URL=https://people-relation.saikyonews.com/api
+```
+
+デプロイ後の確認（サーバーまたは手元）:
+
+```bash
+curl -sA "Twitterbot/1.0" "https://people-relation.pages.dev/?diagram_share_id=<share_id>" | grep -E 'og:image|twitter:image'
+curl -sI "https://people-relation.saikyonews.com/api/v1/diagram/share/<share_id>/og-image"
+```
+
+`og:image` の URL が **200** `image/png` であること。X はカードをキャッシュするため、修正後は [Card Validator](https://cards-dev.twitter.com/validator) で URL を再取得してください（キャッシュだけでは初回失敗分は直りません）。
+
 ### `DIAGRAM_SHARE_SECRET_KEY` の生成（本番・ステージング）
 
 鍵は **環境ごとに 1 本**、ランダム生成した値を Git にコミットせず、`.env` やシークレット管理にだけ保存してください。
