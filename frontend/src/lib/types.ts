@@ -80,6 +80,7 @@ export type DiagramShareOut = {
   center_person_ids: number[];
   show_peer_links: boolean;
   total_point_gt: number;
+  exclude_zero_reverse: boolean;
   center_persons: ApiPerson[];
   has_og_image: boolean;
 };

@@ -128,6 +128,7 @@ FastAPI標準のエラー応答を返します。
 | --- | --- | --- | --- |
 | center_titles | string[] | yes | 中心人物の `person.title` を **1〜10件**（重複は除去）。空要素は除去後に件数チェックする。 |
 | total_point_gt | int | no | デフォルト `1`。`GROUP BY` 後の条件 `HAVING SUM(relation.point) > total_point_gt`（**0 以上**）。大きいほど表示ペアは厳しくなる。 |
+| exclude_zero_reverse | boolean | no | デフォルト `true`。`true` のとき無向ペアの **両方向** に `point <> 0` の `relation` が必要（❷ の「主体値または関連値 0 は除外」と同等）。 |
 
 ### DiagramRelationPairOut
 
@@ -527,7 +528,8 @@ sequenceDiagram
   "v": 1,
   "c": [1, 2],
   "p": false,
-  "t": 1
+  "t": 1,
+  "e": true
 }
 ```
 
@@ -536,12 +538,13 @@ sequenceDiagram
 | `c` | 中心人物の `person.id`（1〜10、ユニーク） |
 | `p` | 関連者同士のリンクを表示するか |
 | `t` | `SUM(point) > t` のしきい値（`total_point_gt`） |
+| `e` | 主体値・関連値 0 除外（`exclude_zero_reverse`）。省略時は `true`（旧 share_id 互換） |
 
 #### `POST /api/v1/diagram/share`
 
 - **用途**: 上記ペイロードから `share_id` を発行する（存在しない `person.id` は **404**）。
 - **認証**: なし
-- **リクエスト**: `DiagramShareCreateIn`（`center_person_ids`, `show_peer_links`, `total_point_gt`）
+- **リクエスト**: `DiagramShareCreateIn`（`center_person_ids`, `show_peer_links`, `total_point_gt`, `exclude_zero_reverse`）
 - **レスポンス 200**: `{ "share_id": "..." }`
 
 #### `GET /api/v1/diagram/share/{share_id}`
@@ -635,6 +638,7 @@ sequenceDiagram
 - 中心人物のキーは **`person.title`**（`POST /relation` 保存時の Wikipedia 記事タイトル）。フロントは中心チップの `ApiPerson.title` を `center_titles` に載せる。
 - `relation` は有向だが、本 API は **同一無向ペア**（`title` の辞書順で正規化）に属する **すべての有向行**の `point` を **`SUM`** する（例: A→B が 3・B→A が 2 なら `total_point = 5`）。
 - `point = 0` の行は集約対象外。集約後は **`SUM(point) > total_point_gt`**（厳密な「より大きい」。省略時・初回作成時のフロント既定は `1`）。
+- **`exclude_zero_reverse = true`（省略時・フロント既定）**: 無向ペアの両方向（辞書順 `pair_a → pair_b` と `pair_b → pair_a`）に `point <> 0` の行が揃うペアだけを対象とする（❷ の「主体値または関連値 0 は除外」と同等）。
 - 返却ペアは、**1 段目**で中心に触れてしきい値を満たしたペアから決まるネットワーク人物集合に属するものに限る。関連者同士のペアは、両者がその集合に入り、**2 段目**の集約で `SUM(point) > total_point_gt` を満たすときだけ含まれる。
 
 **1) 中心人物サジェスト（任意・入力のたびにデバウンス実行）**

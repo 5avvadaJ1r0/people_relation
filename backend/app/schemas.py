@@ -106,6 +106,13 @@ class CoreNetworkIn(BaseModel):
         ge=0,
         description="無向ペア集約後の HAVING 条件: SUM(relation.point) > total_point_gt",
     )
+    exclude_zero_reverse: bool = Field(
+        default=True,
+        description=(
+            "True のとき無向ペアの両方向に point<>0 の relation が必要"
+            "（関連者リストの「主体値または関連値0は除外」と同等）"
+        ),
+    )
 
     @field_validator("center_titles")
     @classmethod
@@ -140,6 +147,10 @@ class DiagramShareCreateIn(BaseModel):
         ge=0,
         description="無向ペア集約後の HAVING 条件: SUM(relation.point) > total_point_gt",
     )
+    exclude_zero_reverse: bool = Field(
+        default=True,
+        description="True のとき無向ペアの両方向に point<>0 の relation が必要",
+    )
 
     @field_validator("center_person_ids")
     @classmethod
@@ -161,5 +172,6 @@ class DiagramShareOut(BaseModel):
     center_person_ids: list[int]
     show_peer_links: bool
     total_point_gt: int
+    exclude_zero_reverse: bool = True
     center_persons: list[PersonSearchOut]
     has_og_image: bool = False

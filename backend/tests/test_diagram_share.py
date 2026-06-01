@@ -27,13 +27,26 @@ def test_diagram_share_token_roundtrip() -> None:
         center_person_ids=[1, 2],
         show_peer_links=True,
         total_point_gt=3,
+        exclude_zero_reverse=False,
     )
     decoded = decode_diagram_share_id(share_id)
     assert decoded == {
         "center_person_ids": [1, 2],
         "show_peer_links": True,
         "total_point_gt": 3,
+        "exclude_zero_reverse": False,
     }
+
+
+def test_diagram_share_token_exclude_zero_reverse_defaults_true() -> None:
+    """旧 share_id（e なし）は exclude_zero_reverse=True として復号する。"""
+    share_id = encode_diagram_share_payload(
+        center_person_ids=[1],
+        show_peer_links=False,
+        total_point_gt=1,
+    )
+    decoded = decode_diagram_share_id(share_id)
+    assert decoded["exclude_zero_reverse"] is True
 
 
 def test_diagram_share_token_base64_padding_roundtrip() -> None:
@@ -54,6 +67,7 @@ def test_diagram_share_token_base64_padding_roundtrip() -> None:
             "center_person_ids": list(dict.fromkeys(center_ids))[:10],
             "show_peer_links": show_peer,
             "total_point_gt": total_gt,
+            "exclude_zero_reverse": True,
         }
         pad = "=" * (-len(share_id) % 4)
         if pad:

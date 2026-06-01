@@ -21,6 +21,7 @@ def create_diagram_share_id(body: DiagramShareCreateIn) -> str:
         center_person_ids=body.center_person_ids,
         show_peer_links=body.show_peer_links,
         total_point_gt=body.total_point_gt,
+        exclude_zero_reverse=body.exclude_zero_reverse,
     )
 
 
@@ -50,6 +51,7 @@ def resolve_diagram_share(db: Session, share_id: str) -> DiagramShareOut:
         center_person_ids=ids,
         show_peer_links=payload["show_peer_links"],
         total_point_gt=payload["total_point_gt"],
+        exclude_zero_reverse=payload["exclude_zero_reverse"],
         center_persons=center_persons,
         has_og_image=load_diagram_share_og_image(share_id=share_id) is not None,
     )
@@ -78,6 +80,7 @@ def render_diagram_share_card_html(db: Session, share_id: str) -> str:
     description = (
         f"関連値の合計が {resolved.total_point_gt} より大きい関係"
         f"{'（関連者間リンクあり）' if resolved.show_peer_links else ''}"
+        f"{'（主体値・関連値0除外）' if resolved.exclude_zero_reverse else ''}"
     )
     app_url = build_diagram_share_app_url(share_id)
     og_image = build_diagram_share_og_image_url(share_id)

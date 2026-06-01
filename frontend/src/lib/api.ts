@@ -73,7 +73,11 @@ export const apiResolveWikiMasters = async (
 };
 
 export const apiPostDiagramCoreNetwork = async (
-  body: { center_titles: string[]; total_point_gt?: number },
+  body: {
+    center_titles: string[];
+    total_point_gt?: number;
+    exclude_zero_reverse?: boolean;
+  },
   init?: { signal?: AbortSignal }
 ): Promise<DiagramCoreNetworkOut> => {
   const url = `${API_BASE}/v1/diagram/core_network`;
@@ -97,6 +101,7 @@ export const apiPostDiagramShare = async (
     center_person_ids: number[];
     show_peer_links: boolean;
     total_point_gt: number;
+    exclude_zero_reverse: boolean;
   },
   init?: { signal?: AbortSignal },
 ): Promise<DiagramShareTokenOut> => {

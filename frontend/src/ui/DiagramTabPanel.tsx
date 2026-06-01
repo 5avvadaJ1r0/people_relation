@@ -315,6 +315,8 @@ export const DiagramTabPanel = ({
   const [allRows, setAllRows] = useState<DiagramRow[]>([]);
   /** 関連者同士のリンクを図に含める（既定 OFF） */
   const [showPeerLinks, setShowPeerLinks] = useState(false);
+  /** 無向ペアの両方向に point<>0 が必要（既定 ON。関連者リストと同趣旨） */
+  const [excludeZeroReverse, setExcludeZeroReverse] = useState(true);
   const [totalPointGt, setTotalPointGt] = useState(DEFAULT_DIAGRAM_TOTAL_POINT_GT);
   /** 中心 2 名の相関図でのみ利用（縦＝上・下 / 横＝左・右） */
   const [twoCoreLayout, setTwoCoreLayout] = useState<TwoCoreLayout>("vertical");
@@ -450,6 +452,7 @@ export const DiagramTabPanel = ({
       const data = await apiPostDiagramCoreNetwork({
         center_titles: titles,
         total_point_gt: gt,
+        exclude_zero_reverse: excludeZeroReverse,
       });
       applyNetworkResponse(gt, data);
     } catch (e: unknown) {
@@ -478,13 +481,18 @@ export const DiagramTabPanel = ({
   );
 
   const loadDiagramWithGtForCenter = useCallback(
-    async (persons: ApiPerson[], gt: number) => {
+    async (
+      persons: ApiPerson[],
+      gt: number,
+      excludeZero: boolean,
+    ) => {
       setBusy(true);
       setError(null);
       try {
         const data = await apiPostDiagramCoreNetwork({
           center_titles: persons.map((c) => c.title),
           total_point_gt: gt,
+          exclude_zero_reverse: excludeZero,
         });
         applyNetworkResponse(gt, data);
       } catch (e: unknown) {
@@ -501,9 +509,11 @@ export const DiagramTabPanel = ({
     if (appliedShareIdRef.current === shareBootstrap.shareId) return;
     appliedShareIdRef.current = shareBootstrap.shareId;
     setShowPeerLinks(shareBootstrap.showPeerLinks);
+    setExcludeZeroReverse(shareBootstrap.excludeZeroReverse);
     void loadDiagramWithGtForCenter(
       shareBootstrap.centerPersons,
       shareBootstrap.totalPointGt,
+      shareBootstrap.excludeZeroReverse,
     );
   }, [shareBootstrap, loadDiagramWithGtForCenter]);
 
@@ -534,6 +544,7 @@ export const DiagramTabPanel = ({
         center_person_ids: center.map((c) => c.id),
         show_peer_links: showPeerLinks,
         total_point_gt: totalPointGt,
+        exclude_zero_reverse: excludeZeroReverse,
       });
       if (gen !== diagramUrlShareGenRef.current) return;
       const pageUrl = buildDiagramSharePageUrl(shareId);
@@ -566,7 +577,7 @@ export const DiagramTabPanel = ({
         setDiagramUrlShareBusy(false);
       }
     }
-  }, [center, hasDiagram, members, showPeerLinks, totalPointGt]);
+  }, [center, excludeZeroReverse, hasDiagram, members, showPeerLinks, totalPointGt]);
 
   const onShareDiagramImage = useCallback(() => {
     setDiagramShareError(null);
@@ -878,6 +889,7 @@ export const DiagramTabPanel = ({
                     setMembers([]);
                     setAllRows([]);
                     setShowPeerLinks(false);
+                    setExcludeZeroReverse(true);
                     setTotalPointGt(DEFAULT_DIAGRAM_TOTAL_POINT_GT);
                     setTwoCoreLayout("vertical");
                     setError(null);
@@ -1010,6 +1022,21 @@ export const DiagramTabPanel = ({
                       </span>
                     ) : null}
                   </div>
+                  <label className="detailMetaCheckboxLabel diagramPeerLinksCheckbox">
+                    <input
+                      type="checkbox"
+                      checked={excludeZeroReverse}
+                      disabled={panelBusy || !canBuild}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setExcludeZeroReverse(next);
+                        if (hasDiagram && canBuild) {
+                          void loadDiagramWithGtForCenter(center, totalPointGt, next);
+                        }
+                      }}
+                    />
+                    <span>主体値または関連値0は除外</span>
+                  </label>
                   <label className="detailMetaCheckboxLabel diagramPeerLinksCheckbox">
                     <input
                       type="checkbox"
