@@ -1,4 +1,5 @@
 import { buildDiagramShareOgImageApiUrl, buildDiagramSharePageUrl } from "./diagramShare";
+import { applyDefaultSiteSeo, PAGE_TITLE } from "./siteSeo";
 
 const META_KEYS = [
   "description",
@@ -62,7 +63,7 @@ export const applyDiagramShareMeta = (input: DiagramShareMetaInput): void => {
   }
 };
 
-export const clearDiagramShareMeta = (defaultTitle: string): void => {
-  document.title = defaultTitle;
+export const clearDiagramShareMeta = (defaultTitle: string = PAGE_TITLE): void => {
   removeManagedMeta();
+  applyDefaultSiteSeo(defaultTitle);
 };

@@ -7,9 +7,8 @@ import {
   clearDiagramShareMeta,
 } from "../../lib/diagramShareMeta";
 import type { ApiPerson } from "../../lib/types";
+import { PAGE_TITLE } from "../../lib/siteSeo";
 import type { MainAppTab } from "../../appScreenTypes";
-
-const DEFAULT_PAGE_TITLE = "著名人関連者リストアップ・相関図作成";
 
 export type DiagramShareBootstrap = {
   shareId: string;
@@ -77,7 +76,7 @@ export const useDiagramShareFromUrl = (
   useEffect(() => {
     const syncMetaWithLocation = () => {
       if (!readDiagramShareIdFromLocation()) {
-        clearDiagramShareMeta(DEFAULT_PAGE_TITLE);
+        clearDiagramShareMeta(PAGE_TITLE);
         setBootstrap(null);
         setShareLoadError(null);
       }
@@ -88,7 +87,7 @@ export const useDiagramShareFromUrl = (
 
   useEffect(
     () => () => {
-      clearDiagramShareMeta(DEFAULT_PAGE_TITLE);
+      clearDiagramShareMeta(PAGE_TITLE);
     },
     [],
   );

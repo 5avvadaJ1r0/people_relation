@@ -662,7 +662,7 @@ export const DiagramTabPanel = ({
               <h2 className="diagramFlowSectionTitle diagramCardLeadTitle">
                 中心人物の追加
               </h2>
-              <h2>著名人（主体者実行済みのみ）</h2>
+              <h2>有名人・著名人（主体者実行済みのみ）</h2>
               <div className="diagramSuggestWrap">
                 <div
                   className={`textInputWrap${center.length >= MAX_DIAGRAM_CENTER ? " diagramCenterInputAtCap" : ""}`}
