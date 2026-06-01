@@ -375,7 +375,7 @@ sequenceDiagram
 
 `GET /api/v1/person/search?name=...`
 
-- **用途**: 保存済み人物の部分一致検索
+- **用途**: 保存済み人物の部分一致検索（`person.name` / `person.title`。スペース・中点・ハイフン類は無視して比較）
 - **クエリ**
   - `name` (string, 必須, min_length=1)
 - **上限**: 20件
@@ -414,7 +414,7 @@ sequenceDiagram
     participant DB as Postgres (SQLAlchemy)
 
     FE->>API: GET /api/v1/person/search?name=...
-    API->>DB: SELECT person WHERE name ILIKE %name% LIMIT 20
+    API->>DB: SELECT person WHERE normalized(name|title) LIKE %normalized(name)% LIMIT 20
     DB-->>API: Person[]
     Note over API: person ごとに relation の主体有無と executed フラグを付与して PersonSearchOut[]
     API-->>FE: 200 PersonSearchOut[]
@@ -424,7 +424,7 @@ sequenceDiagram
 
 `GET /api/v1/person/search_executed_masters?name=...`
 
-- **用途**: **`person.executed_as_master = true`** の人物のみを、`/person/search` と同様の **名前部分一致**で検索する（❶ 主体者入力のサジェスト・相関図タブの中心人物選定用）。
+- **用途**: **`person.executed_as_master = true`** の人物のみを、`/person/search` と同様の **`name` / `title` 部分一致**（区切り記号除去後）で検索する（❶ 主体者入力のサジェスト・相関図タブの中心人物選定用）。
 - **クエリ**
   - `name` (string, 必須, min_length=1)
 - **上限**: 20件
@@ -436,7 +436,7 @@ sequenceDiagram
 
 #### SQL（実装の要点）
 
-- `SELECT ... FROM person WHERE name ILIKE %name% AND executed_as_master IS TRUE LIMIT 20`
+- `SELECT ... FROM person WHERE (normalized(name) LIKE %q% OR normalized(title) LIKE %q%) AND executed_as_master IS TRUE LIMIT 20`（`normalized` はスペース・中点・ハイフン類を除去し小文字化。実装: `app.services.person_name_search`）
 
 ### 4-2-a) Wikipedia 検索行と主体者の一括突合
 
@@ -1124,6 +1124,7 @@ sequenceDiagram
 
 ## 変更履歴
 
+- 2026-06-01: **`GET /api/v1/person/search`** / **`GET /api/v1/person/search_executed_masters`** の名前検索を、`name` / `title` についてスペース・中点・ハイフン類を除去した部分一致に変更（例: `ミックジャガー` → `ミック・ジャガー`）。
 - 2026-05-27: Wikipedia 関連の SSE エンドポイントを廃止。**`GET /api/v1/wiki/person_search`**（JSON）のみ公開。旧 **`person_search_sse`** / **`extract_relations_sse`** は削除。2-hop 抽出は **`app.worker.relation_extract`** のみ（[§8-2](#8-2-2-hop-関連抽出内部ワーカー)）。
 - 2026-05-19: **相関図作成**の実行 SQL を [§4-3 実行 SQL（相関図作成）](#実行-sql相関図作成) に追記。正規化は HTTP では **422**（Pydantic）、しきい値 UI は **「関連者を増やす／減らす」** に実装を合わせて記述を修正。
 - 2026-05-29: **相関図 URL 共有**（`POST/GET /api/v1/diagram/share`、`og-image`、`card`）。`DIAGRAM_SHARE_SECRET_KEY` / `PUBLIC_APP_URL` / `PUBLIC_API_URL` を追加（[§4-4](#4-4-相関図-url-共有暗号化-share_id)）。
