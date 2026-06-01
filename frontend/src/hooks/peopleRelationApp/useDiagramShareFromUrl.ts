@@ -15,6 +15,7 @@ export type DiagramShareBootstrap = {
   centerPersons: ApiPerson[];
   showPeerLinks: boolean;
   totalPointGt: number;
+  excludeZeroReverse: boolean;
 };
 
 /** `?diagram_share_id=` 付き URL から中心人物と表示条件を復元する */
@@ -47,6 +48,7 @@ export const useDiagramShareFromUrl = (
           centerPersons: shared.center_persons,
           showPeerLinks: shared.show_peer_links,
           totalPointGt: shared.total_point_gt,
+          excludeZeroReverse: shared.exclude_zero_reverse,
         });
 
         const titles = shared.center_persons.map((p) => p.title).join("、");

@@ -300,7 +300,20 @@ def test_diagram_core_network_includes_related_to_related_edges(
                 "url": "https://example.com/diagram-d",
                 "title": "図丁タイトル",
             },
-            "point": 4,
+            "point": 3,
+        },
+        {
+            "master": {
+                "name": "図丁",
+                "url": "https://example.com/diagram-d",
+                "title": "図丁タイトル",
+            },
+            "slave": {
+                "name": "図丙",
+                "url": "https://example.com/diagram-c",
+                "title": "図丙タイトル",
+            },
+            "point": 1,
         },
         {
             "master": {
@@ -313,7 +326,20 @@ def test_diagram_core_network_includes_related_to_related_edges(
                 "url": "https://example.com/diagram-f",
                 "title": "図己タイトル",
             },
-            "point": 4,
+            "point": 3,
+        },
+        {
+            "master": {
+                "name": "図己",
+                "url": "https://example.com/diagram-f",
+                "title": "図己タイトル",
+            },
+            "slave": {
+                "name": "図戊",
+                "url": "https://example.com/diagram-e",
+                "title": "図戊タイトル",
+            },
+            "point": 1,
         },
         {
             "master": {
@@ -326,7 +352,20 @@ def test_diagram_core_network_includes_related_to_related_edges(
                 "url": "https://example.com/diagram-f",
                 "title": "図己タイトル",
             },
-            "point": 3,
+            "point": 2,
+        },
+        {
+            "master": {
+                "name": "図己",
+                "url": "https://example.com/diagram-f",
+                "title": "図己タイトル",
+            },
+            "slave": {
+                "name": "図丁",
+                "url": "https://example.com/diagram-d",
+                "title": "図丁タイトル",
+            },
+            "point": 1,
         },
     ]
     r = client.post(
@@ -375,6 +414,54 @@ def test_person_relations_not_found(client: TestClient) -> None:
 def test_person_relations_aggregate_not_found(client: TestClient) -> None:
     r = client.get("/api/v1/person/99999/relations_aggregate")
     assert r.status_code == 404
+
+
+def test_diagram_core_network_exclude_zero_reverse(
+    client: TestClient,
+) -> None:
+    """片方向のみの relation は exclude_zero_reverse=True でペアに含めない。"""
+    url_a = "https://example.com/diagram-asym-a"
+    url_b = "https://example.com/diagram-asym-b"
+    payload = [
+        {
+            "master": {"name": "図非対称乙", "url": url_b, "title": "図非対称乙"},
+            "slave": {"name": "図非対称甲", "url": url_a, "title": "図非対称甲"},
+            "point": 6,
+        },
+    ]
+    r = client.post(
+        "/api/v1/relation",
+        json=payload,
+        params={"executed_master_url": url_b},
+    )
+    assert r.status_code == 200
+    title_a = "図非対称甲"
+    title_b = "図非対称乙"
+
+    r_excl = client.post(
+        "/api/v1/diagram/core_network",
+        json={
+            "center_titles": [title_b],
+            "total_point_gt": 0,
+            "exclude_zero_reverse": True,
+        },
+    )
+    assert r_excl.status_code == 200
+    assert r_excl.json()["pairs"] == []
+
+    r_incl = client.post(
+        "/api/v1/diagram/core_network",
+        json={
+            "center_titles": [title_b],
+            "total_point_gt": 0,
+            "exclude_zero_reverse": False,
+        },
+    )
+    assert r_incl.status_code == 200
+    pairs = r_incl.json()["pairs"]
+    assert len(pairs) == 1
+    assert {pairs[0]["person1"], pairs[0]["person2"]} == {title_a, title_b}
+    assert pairs[0]["total_point"] == 6
 
 
 def test_relations_aggregate_includes_reverse_only_partner(

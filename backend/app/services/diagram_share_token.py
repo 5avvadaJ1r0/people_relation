@@ -51,6 +51,7 @@ def encode_diagram_share_payload(
     center_person_ids: list[int],
     show_peer_links: bool,
     total_point_gt: int,
+    exclude_zero_reverse: bool = True,
 ) -> str:
     """JSON を Fernet で暗号化し、URL セーフな share_id を返す。"""
     payload: dict[str, Any] = {
@@ -58,6 +59,7 @@ def encode_diagram_share_payload(
         "c": center_person_ids,
         "p": show_peer_links,
         "t": total_point_gt,
+        "e": exclude_zero_reverse,
     }
     blob = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode(
         "utf-8"
@@ -121,8 +123,16 @@ def decode_diagram_share_id(share_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="共有 ID が無効です") from exc
     if total_gt < 0:
         raise HTTPException(status_code=400, detail="共有 ID が無効です")
+    exclude_raw = data.get("e")
+    if exclude_raw is None:
+        exclude_zero_reverse = True
+    elif not isinstance(exclude_raw, bool):
+        raise HTTPException(status_code=400, detail="共有 ID が無効です")
+    else:
+        exclude_zero_reverse = exclude_raw
     return {
         "center_person_ids": uniq,
         "show_peer_links": show_peer,
         "total_point_gt": total_gt,
+        "exclude_zero_reverse": exclude_zero_reverse,
     }

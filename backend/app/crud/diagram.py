@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.model import Person, Relation
@@ -27,6 +27,7 @@ def _core_network_edges_aggregate_select(
     total_point_gt: int,
     *,
     both_endpoints_in: bool = False,
+    exclude_zero_reverse: bool = True,
 ):
     """無向ペア集約の SELECT を組み立てる（実行はしない）。
 
@@ -43,16 +44,27 @@ def _core_network_edges_aggregate_select(
         if both_endpoints_in
         else (or_(p1.title.in_(titles), p2.title.in_(titles)),)
     )
-    return (
+    having: list = [total > total_point_gt]
+    if exclude_zero_reverse:
+        dir_ab = func.sum(
+            case((and_(p1.title == pair_a, p2.title == pair_b), 1), else_=0)
+        )
+        dir_ba = func.sum(
+            case((and_(p1.title == pair_b, p2.title == pair_a), 1), else_=0)
+        )
+        having.extend((dir_ab > 0, dir_ba > 0))
+    stmt = (
         select(pair_a, pair_b, total)
         .select_from(Relation)
         .join(p1, p1.id == Relation.master_person_id)
         .join(p2, p2.id == Relation.slave_person_id)
         .where(Relation.point != 0, *endpoint_filter)
         .group_by(pair_a, pair_b)
-        .having(total > total_point_gt)
-        .order_by(total.desc())
+        .having(*having)
     )
+    if both_endpoints_in:
+        stmt = stmt.order_by(total.desc())
+    return stmt
 
 
 def _rows_to_core_network_edge_tuples(
@@ -68,7 +80,11 @@ def _rows_to_core_network_edge_tuples(
 
 
 def aggregate_core_network_edges(
-    db: Session, *, center_titles: list[str], total_point_gt: int = 1
+    db: Session,
+    *,
+    center_titles: list[str],
+    total_point_gt: int = 1,
+    exclude_zero_reverse: bool = True,
 ) -> list[tuple[str, str, int]]:
     """中心人物を含む相関図ネットワークの relation を無向ペア集約して返す。
 
@@ -83,7 +99,10 @@ def aggregate_core_network_edges(
     if not titles:
         return []
     center_touch_stmt = _core_network_edges_aggregate_select(
-        titles, total_point_gt, both_endpoints_in=False
+        titles,
+        total_point_gt,
+        both_endpoints_in=False,
+        exclude_zero_reverse=exclude_zero_reverse,
     )
     center_touch_rows = db.execute(center_touch_stmt).all()
     network_titles = set(titles)
@@ -94,7 +113,10 @@ def aggregate_core_network_edges(
     if len(network_list) < 2:
         return []
     full_stmt = _core_network_edges_aggregate_select(
-        network_list, total_point_gt, both_endpoints_in=True
+        network_list,
+        total_point_gt,
+        both_endpoints_in=True,
+        exclude_zero_reverse=exclude_zero_reverse,
     )
     rows = db.execute(full_stmt).all()
     return _rows_to_core_network_edge_tuples(rows)
