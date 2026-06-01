@@ -6,6 +6,7 @@ from app import crud
 from app.services.schema_maps import (
     person_search_out,
     relation_aggregate_out,
+    relation_aggregate_out_incoming_only,
     relation_out_from_row,
 )
 from app.schemas import (
@@ -102,14 +103,27 @@ def list_person_relations_aggregate(
     if person is None:
         return None
     rows = crud.get_relation_aggregates_for_master(db, master_id=person_id, limit=50)
-    ids: list[int] = []
+    incoming = crud.get_incoming_relations_without_forward(db, person_id=person_id)
+    ids: list[int] = [person_id]
     for fwd, rev in rows:
         ids.append(fwd.master_person_id)
         ids.append(fwd.slave_person_id)
+    for inc in incoming:
+        ids.append(inc.master_person_id)
+        ids.append(inc.slave_person_id)
     forward = crud.person_ids_with_forward_relation(db, person_ids=ids)
     out = [
         relation_aggregate_out(fwd, rev, forward_edge_person_ids=forward)
         for fwd, rev in rows
     ]
+    seen_slave_ids = {fwd.slave_person_id for fwd, _ in rows}
+    for inc in incoming:
+        if inc.master_person_id in seen_slave_ids:
+            continue
+        out.append(
+            relation_aggregate_out_incoming_only(
+                person, inc, forward_edge_person_ids=forward
+            )
+        )
     out.sort(key=lambda x: x.total_point, reverse=True)
-    return out
+    return out[:50]

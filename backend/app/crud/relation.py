@@ -4,7 +4,7 @@ from typing import Any, cast
 
 from sqlalchemy import and_, delete, select
 from sqlalchemy.engine import CursorResult
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.model import Relation
 
@@ -122,3 +122,31 @@ def get_relation_aggregates_for_master(db: Session, *, master_id: int, limit: in
         .all()
     )
     return rows
+
+
+def get_incoming_relations_without_forward(
+    db: Session, *, person_id: int
+) -> list[Relation]:
+    """
+    主体が slave の行のうち、同一相手への forward（主体が master）が無いもの。
+    相手→主体のみ存在するペアを関連者一覧に含めるために使う。
+    """
+    fwd_check = aliased(Relation)
+    return (
+        db.query(Relation)
+        .options(
+            joinedload(Relation.master_person),
+            joinedload(Relation.slave_person),
+        )
+        .outerjoin(
+            fwd_check,
+            and_(
+                fwd_check.master_person_id == person_id,
+                fwd_check.slave_person_id == Relation.master_person_id,
+            ),
+        )
+        .where(Relation.slave_person_id == person_id)
+        .where(fwd_check.id.is_(None))
+        .order_by(Relation.point.desc(), Relation.id.asc())
+        .all()
+    )

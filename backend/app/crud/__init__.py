@@ -20,6 +20,7 @@ from app.crud.person import (
 from app.crud.relation import (
     delete_relations_where_master,
     delete_reverse_edges_to_master_from_given_masters,
+    get_incoming_relations_without_forward,
     get_relation_aggregates_for_master,
     get_relations_for_master,
     list_slave_person_ids_for_master,
@@ -33,6 +34,7 @@ __all__ = [
     "delete_reverse_edges_to_master_from_given_masters",
     "get_person",
     "get_person_by_url",
+    "get_incoming_relations_without_forward",
     "get_relation_aggregates_for_master",
     "get_relations_for_master",
     "list_persons_by_ids",
