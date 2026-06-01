@@ -168,7 +168,7 @@ export const PrincipalRelationsCard = ({
           checked={excludeZeroReverse}
           onChange={(e) => setExcludeZeroReverse(e.target.checked)}
         />
-        <span>関連値0は除外</span>
+        <span>主体値または関連値0は除外</span>
       </label>
     </>
   );
@@ -310,7 +310,7 @@ export const PrincipalRelationsCard = ({
 
       {relations.length > 0 && displayRelations.length > 0 ? null : relations.length > 0 ? (
         <div className="subtitle">
-          関連値0は除外のため、表示できる関連者がありません。チェックを外すと一覧できます。
+          主体値または関連値0は除外のため、表示できる関連者がありません。チェックを外すと一覧できます。
         </div>
       ) : (
         <div className="subtitle">結果はまだありません</div>

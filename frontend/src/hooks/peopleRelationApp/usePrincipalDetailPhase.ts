@@ -30,7 +30,7 @@ export const usePrincipalDetailPhase = ({ error, setError }: PrincipalDetailPhas
   const displayRelations = useMemo(() => {
     let rows = relations;
     if (excludeZeroReverse) {
-      rows = rows.filter((r) => r.reversePoint !== 0);
+      rows = rows.filter((r) => r.forwardPoint !== 0 && r.reversePoint !== 0);
     }
     const sorted = [...rows].sort((a, b) => b.totalPoint - a.totalPoint);
     return sorted.slice(0, WIKI_MAX_RELATED_DISPLAY);

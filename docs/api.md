@@ -957,7 +957,7 @@ WHERE master_person_id IN (:id1, :id2, ...);
 
 フロント（`usePrincipalDetailPhase`）は API 応答を受け取ったあと次を行う。詳細は [frontend.md](./frontend.md#関連者リストの表示順)。
 
-- 既定 **「関連値 0 は除外」**: `reverse_point = 0` の行を除く。
+- 既定 **「主体値または関連値 0 は除外」**: `forward_point = 0` または `reverse_point = 0` の行を除く。
 - **`total_point` 降順**で並べ替え（API 返却順に依存しない）。
 - 最大 **100 件**まで表示（`WIKI_MAX_RELATED_DISPLAY`）。API は最大 50 件のため、通常は API 件数が上限。
 
@@ -980,7 +980,7 @@ WHERE fwd.master_person_id = :person_id
 ORDER BY total_point DESC, fwd.point DESC;
 ```
 
-画面で「関連値 0 は除外」がオンのときは `AND COALESCE(rev.point, 0) <> 0` を足す。
+画面で「主体値または関連値 0 は除外」がオンのときは `AND fwd.point <> 0 AND COALESCE(rev.point, 0) <> 0` を足す（incoming-only 行は `forward_point = 0` のため除外される）。
 
 
 ### 7) 人物判定（内部: `app.services.wiki.human.is_human_by_title`）
