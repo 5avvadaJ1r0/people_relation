@@ -887,7 +887,7 @@ sequenceDiagram
 **前提**
 
 - `relation` は **有向**（`master_person_id` → `slave_person_id`）。無向の `OR` 結合は行わない。
-- **主体者** = パス `person_id` の人物。関連者は **主体者が master の forward 行**の `slave` のみ（相手が master で主体者が slave の行だけ存在する相手は、forward 行が無ければ一覧に出ない）。
+- **主体者** = パス `person_id` の人物。関連者は (1) **主体者が master の forward 行**の `slave`、および (2) **相手が master で主体者が slave の行だけ**ある相手（主体値 0・関連値 = その行の `point`）をマージして返す。同一相手は forward 行を優先し重複しない。
 - **主体値** = forward の `point`、**関連値** = 逆方向行 `slave → master` の `point`（無ければ 0）、**合計値** = 両者の和。
 
 **1) 主体者の存在確認**
@@ -922,9 +922,22 @@ LIMIT 50;
 
 - インデックス: `idx_relation_master_point`（`master_person_id`, `point DESC`, `id ASC`）、逆方向 JOIN 用 `idx_relation_slave_master`（`slave_person_id`, `master_person_id`）。DDL は [ddl_postgres.sql](./ddl_postgres.sql)。
 
-**3) アプリケーション層での `total_point` ソート**
+**2b) 相手→主体のみの行（forward が無い incoming）**
 
-DB では **forward の `point` 降順**で先頭 50 件を切る。レスポンス直前に Python で次を計算し、**`total_point` 降順**に並べ替える（同順位のタイブレークは実装依存）。
+```sql
+SELECT inc.*
+FROM relation AS inc
+LEFT JOIN relation AS fwd_check
+  ON fwd_check.master_person_id = :person_id
+ AND fwd_check.slave_person_id = inc.master_person_id
+WHERE inc.slave_person_id = :person_id
+  AND fwd_check.id IS NULL
+ORDER BY inc.point DESC, inc.id ASC;
+```
+
+**3) アプリケーション層でのマージ・`total_point` ソート**
+
+(2) の forward 集約と (2b) の incoming-only をマージし、**`total_point` 降順**に並べ替えて最大 50 件返す（forward 側は DB で **forward の `point` 降順**の先頭 50 件を取得してからマージ。同順位のタイブレークは実装依存）。
 
 ```text
 total_point = forward_point + COALESCE(reverse_point, 0)

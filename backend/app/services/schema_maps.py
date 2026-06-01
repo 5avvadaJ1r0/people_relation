@@ -84,6 +84,29 @@ def relation_aggregate_out(
     )
 
 
+def relation_aggregate_out_incoming_only(
+    principal: Person,
+    incoming: Relation,
+    *,
+    forward_edge_person_ids: set[int],
+) -> RelationAggregateOut:
+    """相手→主体の行のみあるペア（主体値 0・関連値 = incoming.point）。"""
+    related = incoming.master_person
+    return RelationAggregateOut(
+        master=person_to_out(
+            principal,
+            has_relations=principal.id in forward_edge_person_ids,
+        ),
+        slave=person_to_out(
+            related,
+            has_relations=related.id in forward_edge_person_ids,
+        ),
+        forward_point=0,
+        reverse_point=incoming.point,
+        total_point=incoming.point,
+    )
+
+
 def person_search_out(
     person: Person,
     *,

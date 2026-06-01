@@ -377,6 +377,47 @@ def test_person_relations_aggregate_not_found(client: TestClient) -> None:
     assert r.status_code == 404
 
 
+def test_relations_aggregate_includes_reverse_only_partner(
+    client: TestClient,
+) -> None:
+    """相手→主体の行だけあるときも、主体側の aggregate に相手が載る。"""
+    url_a = "https://example.com/asym-a"
+    url_b = "https://example.com/asym-b"
+    payload = [
+        {
+            "master": {"name": "非対称乙", "url": url_b, "title": "非対称乙"},
+            "slave": {"name": "非対称甲", "url": url_a, "title": "非対称甲"},
+            "point": 6,
+        },
+    ]
+    r = client.post(
+        "/api/v1/relation",
+        json=payload,
+        params={"executed_master_url": url_b},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    id_a = next(x["slave"]["id"] for x in body if x["slave"]["url"] == url_a)
+    id_b = next(x["master"]["id"] for x in body if x["master"]["url"] == url_b)
+
+    r_b = client.get(f"/api/v1/person/{id_b}/relations_aggregate")
+    assert r_b.status_code == 200
+    agg_b = r_b.json()
+    assert len(agg_b) == 1
+    assert agg_b[0]["slave"]["url"] == url_a
+    assert agg_b[0]["forward_point"] == 6
+    assert agg_b[0]["reverse_point"] == 0
+
+    r_a = client.get(f"/api/v1/person/{id_a}/relations_aggregate")
+    assert r_a.status_code == 200
+    agg_a = r_a.json()
+    assert len(agg_a) == 1
+    assert agg_a[0]["slave"]["url"] == url_b
+    assert agg_a[0]["forward_point"] == 0
+    assert agg_a[0]["reverse_point"] == 6
+    assert agg_a[0]["total_point"] == 6
+
+
 def test_post_relation_and_person_endpoints(client: TestClient) -> None:
     payload = [
         {
