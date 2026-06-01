@@ -4,11 +4,15 @@ import random
 from datetime import datetime
 from urllib.parse import quote
 
-from sqlalchemy import func, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.crud.relation import person_ids_with_forward_relation
 from app.model import Person, Relation, WikiHumanCache
+from app.services.person_name_search import (
+    normalize_person_name_for_search,
+    sql_normalized_person_name,
+)
 
 
 def normalize_url(url: str) -> str:
@@ -101,14 +105,28 @@ def list_persons_executed_masters_by_urls(
     return {normalize_url(p.url): p for p in rows}
 
 
+def _person_name_search_predicate(db: Session, *, name: str):
+    """`name` / `title` を区切り記号除去後の部分一致で絞る WHERE 句。"""
+    norm_q = normalize_person_name_for_search(name)
+    if not norm_q:
+        return false()
+    pattern = f"%{norm_q}%"
+    dialect_name = db.get_bind().dialect.name
+    norm_name = sql_normalized_person_name(Person.name, dialect_name=dialect_name)
+    norm_title = sql_normalized_person_name(Person.title, dialect_name=dialect_name)
+    return or_(norm_name.like(pattern), norm_title.like(pattern))
+
+
 def search_persons_executed_as_master(
     db: Session, *, name: str, limit: int = 20
 ) -> list[Person]:
-    q = f"%{name.strip()}%"
     return list(
         db.scalars(
             select(Person)
-            .where(Person.name.ilike(q), person_executed_as_master_predicate())
+            .where(
+                _person_name_search_predicate(db, name=name),
+                person_executed_as_master_predicate(),
+            )
             .limit(limit)
         ).all()
     )
@@ -117,8 +135,9 @@ def search_persons_executed_as_master(
 def search_persons(
     db: Session, *, name: str, limit: int = 20
 ) -> list[tuple[Person, bool, bool]]:
-    q = f"%{name.strip()}%"
-    persons = db.scalars(select(Person).where(Person.name.ilike(q)).limit(limit)).all()
+    persons = db.scalars(
+        select(Person).where(_person_name_search_predicate(db, name=name)).limit(limit)
+    ).all()
     if not persons:
         return []
 
