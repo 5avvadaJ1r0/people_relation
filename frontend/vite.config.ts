@@ -1,8 +1,20 @@
 import react from "@vitejs/plugin-react";
-import type { Connect } from "vite";
+import type { Connect, Plugin } from "vite";
 import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
 import { isSocialShareCrawler } from "./src/lib/diagramShare";
+import { SITE_JSON_LD } from "./src/lib/siteSeo";
+
+const SITE_JSON_LD_PLACEHOLDER = "<!-- SITE_JSON_LD -->";
+
+const injectSiteJsonLdPlugin = (): Plugin => ({
+  name: "inject-site-json-ld",
+  transformIndexHtml(html) {
+    if (!html.includes(SITE_JSON_LD_PLACEHOLDER)) return html;
+    const script = `<script type="application/ld+json">\n${JSON.stringify(SITE_JSON_LD, null, 2)}\n    </script>`;
+    return html.replace(SITE_JSON_LD_PLACEHOLDER, script);
+  },
+});
 
 /**
  * 開発時の /api プロキシ先。
@@ -54,6 +66,7 @@ const socialCrawlerShareCardMiddleware = (
 export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
+    injectSiteJsonLdPlugin(),
     {
       name: "diagram-share-social-card",
       configureServer(server) {

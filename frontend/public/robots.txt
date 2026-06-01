@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://people-relation.pages.dev/sitemap.xml
