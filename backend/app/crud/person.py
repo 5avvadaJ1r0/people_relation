@@ -4,7 +4,7 @@ import random
 from datetime import datetime
 from urllib.parse import quote
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.crud.relation import person_ids_with_forward_relation
@@ -109,7 +109,7 @@ def _person_name_search_predicate(db: Session, *, name: str):
     """`name` / `title` を区切り記号除去後の部分一致で絞る WHERE 句。"""
     norm_q = normalize_person_name_for_search(name)
     if not norm_q:
-        return Person.id == -1
+        return false()
     pattern = f"%{norm_q}%"
     dialect_name = db.get_bind().dialect.name
     norm_name = sql_normalized_person_name(Person.name, dialect_name=dialect_name)

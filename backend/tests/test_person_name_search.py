@@ -45,6 +45,34 @@ def test_person_search_matches_without_middle_dot(client: TestClient) -> None:
     assert len(rows) == 1
 
 
+def test_person_search_executed_masters_matches_without_middle_dot(
+    client: TestClient,
+) -> None:
+    url = "https://example.com/person-search-exec-norm-dot"
+    db = SessionLocal()
+    try:
+        db.add(
+            Person(
+                name="ミック・ジャガー",
+                title="ミック・ジャガー",
+                url=url,
+                executed_as_master=True,
+                executed_as_master_at=datetime(2026, 6, 1, 12, 0, 0),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.get(
+        "/api/v1/person/search_executed_masters",
+        params={"name": "ミックジャガー"},
+    )
+    assert r.status_code == 200
+    rows = [x for x in r.json() if x["url"] == url]
+    assert len(rows) == 1
+
+
 def test_person_search_executed_masters_matches_title_only_spacing(
     client: TestClient,
 ) -> None:

@@ -39,6 +39,7 @@ def sql_normalized_person_name(
             "",
             "g",
         )
+    # pytest の SQLite 用。本番 PostgreSQL は上記 regexp_replace のみ。
     for ch in _SQLITE_STRIP_CHARS:
         expr = func.replace(expr, ch, "")
     return expr
