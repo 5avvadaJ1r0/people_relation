@@ -1,4 +1,5 @@
 import { buildDiagramShareOgImageApiUrl, buildDiagramSharePageUrl } from "./diagramShare";
+import { upsertMeta } from "./documentHead";
 import { applyDefaultSiteSeo, PAGE_TITLE } from "./siteSeo";
 
 const META_KEYS = [
@@ -13,20 +14,6 @@ const META_KEYS = [
   "twitter:description",
   "twitter:image",
 ] as const;
-
-const upsertMeta = (attr: "name" | "property", key: string, content: string) => {
-  const selector =
-    attr === "name"
-      ? `meta[name="${key}"]`
-      : `meta[property="${key}"]`;
-  let el = document.head.querySelector(selector) as HTMLMetaElement | null;
-  if (!el) {
-    el = document.createElement("meta");
-    el.setAttribute(attr, key);
-    document.head.appendChild(el);
-  }
-  el.setAttribute("content", content);
-};
 
 const removeManagedMeta = () => {
   for (const key of META_KEYS) {

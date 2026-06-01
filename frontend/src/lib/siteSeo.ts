@@ -1,3 +1,5 @@
+import { upsertLink, upsertMeta } from "./documentHead";
+
 /** 本番の公開オリジン（canonical / sitemap / JSON-LD）。Pages の本番 URL と揃える。 */
 export const SITE_CANONICAL_ORIGIN = "https://people-relation.pages.dev";
 
@@ -7,12 +9,8 @@ export const SITE_CANONICAL_ORIGIN = "https://people-relation.pages.dev";
  */
 export const SITE_NAME = "People Relation";
 
-/** SITE_NAME が選ばれない場合の候補（先頭ほど優先） */
-export const SITE_ALTERNATE_NAMES = [
-  "人物相関図",
-  "有名人相関図",
-  "people-relation.pages.dev",
-] as const;
+/** ユーザーがサイトを呼ぶ別名（ホスト名・CDN 名は含めない） */
+export const SITE_ALTERNATE_NAMES = ["人物相関図", "有名人相関図"] as const;
 
 export const PAGE_TITLE = "有名人・著名人の関係者・関連者リストと相関図作成";
 
@@ -20,30 +18,6 @@ export const PAGE_DESCRIPTION =
   "有名人・著名人の関係者・関連者をWikipediaからリストアップし、相関図を無料で作成。有名人相関図・著名人の関係者マップをブラウザ上で可視化するツールです。";
 
 export const CANONICAL_PAGE_URL = `${SITE_CANONICAL_ORIGIN}/`;
-
-const upsertMeta = (attr: "name" | "property", key: string, content: string) => {
-  const selector =
-    attr === "name" ? `meta[name="${key}"]` : `meta[property="${key}"]`;
-  let el = document.head.querySelector(selector) as HTMLMetaElement | null;
-  if (!el) {
-    el = document.createElement("meta");
-    el.setAttribute(attr, key);
-    document.head.appendChild(el);
-  }
-  el.setAttribute("content", content);
-};
-
-const upsertLink = (rel: string, href: string) => {
-  let el = document.head.querySelector(
-    `link[rel="${rel}"]`,
-  ) as HTMLLinkElement | null;
-  if (!el) {
-    el = document.createElement("link");
-    el.setAttribute("rel", rel);
-    document.head.appendChild(el);
-  }
-  el.setAttribute("href", href);
-};
 
 /** トップページ向けの title / description / OGP / canonical を適用する */
 export const applyDefaultSiteSeo = (title: string = PAGE_TITLE): void => {
