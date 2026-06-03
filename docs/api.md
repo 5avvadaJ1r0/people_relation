@@ -127,7 +127,7 @@ FastAPI標準のエラー応答を返します。
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
 | center_titles | string[] | yes | 中心人物の `person.title` を **1〜10件**（重複は除去）。空要素は除去後に件数チェックする。 |
-| total_point_gt | int | no | デフォルト `1`。`GROUP BY` 後の条件 `HAVING SUM(relation.point) > total_point_gt`（**0 以上**）。大きいほど表示ペアは厳しくなる。 |
+| total_point_gt | int | no | デフォルト `0`。`GROUP BY` 後の条件 `HAVING MAX(relation.point) > total_point_gt`（**0 以上**）。主体値または関連値のいずれかがしきい値より大きいペアのみ。大きいほど表示ペアは厳しくなる。 |
 | exclude_zero_reverse | boolean | no | デフォルト `true`。`true` のとき無向ペアの **両方向** に `point <> 0` の `relation` が必要（❷ の「主体値または関連値 0 は除外」と同等）。 |
 
 ### DiagramRelationPairOut
@@ -143,7 +143,7 @@ FastAPI標準のエラー応答を返します。
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
 | center_titles | string[] | yes | リクエストで正規化後の中心人物タイトル一覧 |
-| pairs | DiagramRelationPairOut[] | yes | 中心に触れてネットワークに入った人物集合内の無向ペアのうち、`SUM(point) > total_point_gt` かつ `point <> 0` を満たすもの（中心—関連者・関連者—関連者を含む、`total_point` 降順） |
+| pairs | DiagramRelationPairOut[] | yes | 中心に触れてネットワークに入った人物集合内の無向ペアのうち、`MAX(point) > total_point_gt` かつ `point <> 0` を満たすもの（中心—関連者・関連者—関連者を含む、`total_point`＝`SUM(point)` 降順） |
 
 ### PersonSearchOut
 
@@ -487,13 +487,13 @@ sequenceDiagram
 ```json
 {
   "center_titles": ["AAA", "BBB", "CCC"],
-  "total_point_gt": 1
+  "total_point_gt": 0
 }
 ```
 
 - **リクエストパラメータ**
   - `center_titles` (string[], 必須): 1〜10 名のユニークな `title`
-  - `total_point_gt` (int, 任意, デフォルト `1`, 最小 `0`): 集約後の合計点がこの値**より大きい**ペアだけを返す。値を**上げる**と表示されるペアは**減る**（しきい値が厳しくなる）。**下げる**とペアは**増える**。
+  - `total_point_gt` (int, 任意, デフォルト `0`, 最小 `0`): 無向ペア内の **主体値または関連値**（有向行ごとの `point`）の **最大**がこの値**より大きい**ペアだけを返す。値を**上げる**と表示されるペアは**減る**（しきい値が厳しくなる）。**下げる**とペアは**増える**。
 - **レスポンス 200**: `DiagramCoreNetworkOut`
 
 ```json
@@ -510,7 +510,7 @@ sequenceDiagram
 ```
 
 - **集約ロジック（DB）**
-  1. **ネットワーク構築**: `relation` を無向ペア化し、`WHERE relation.point <> 0` かつ `(p1.title IN (:center_titles) OR p2.title IN (:center_titles))`、`HAVING SUM(point) > total_point_gt` を満たすペアの両端 title と `center_titles` の和集合をネットワーク人物とする。
+  1. **ネットワーク構築**: `relation` を無向ペア化し、`WHERE relation.point <> 0` かつ `(p1.title IN (:center_titles) OR p2.title IN (:center_titles))`、`HAVING MAX(point) > total_point_gt` を満たすペアの両端 title と `center_titles` の和集合をネットワーク人物とする。
   2. **全エッジ取得**: 同じ無向ペア集約を、ネットワーク人物集合について `p1.title IN (:network) AND p2.title IN (:network)` で再実行し、結果を `ORDER BY SUM(point) DESC` で返す（中心—関連者に加え、**関連者—関連者**も含む）。
   - ペア正規化は `CASE` による辞書順（PostgreSQL の `LEAST`/`GREATEST` と同等）。`total_point_gt` は両段階で同一。
 - **レート制限**: 特になし
@@ -537,7 +537,7 @@ sequenceDiagram
 |-----------|------|
 | `c` | 中心人物の `person.id`（1〜10、ユニーク） |
 | `p` | 関連者同士のリンクを表示するか |
-| `t` | `SUM(point) > t` のしきい値（`total_point_gt`） |
+| `t` | `MAX(point) > t` のしきい値（`total_point_gt`） |
 | `e` | 主体値・関連値 0 除外（`exclude_zero_reverse`）。省略時は `true`（旧 share_id 互換） |
 
 #### `POST /api/v1/diagram/share`
@@ -637,9 +637,9 @@ sequenceDiagram
 
 - 中心人物のキーは **`person.title`**（`POST /relation` 保存時の Wikipedia 記事タイトル）。フロントは中心チップの `ApiPerson.title` を `center_titles` に載せる。
 - `relation` は有向だが、本 API は **同一無向ペア**（`title` の辞書順で正規化）に属する **すべての有向行**の `point` を **`SUM`** する（例: A→B が 3・B→A が 2 なら `total_point = 5`）。
-- `point = 0` の行は集約対象外。集約後は **`SUM(point) > total_point_gt`**（厳密な「より大きい」。省略時・初回作成時のフロント既定は `1`）。
+- `point = 0` の行は集約対象外。表示フィルタは **`MAX(point) > total_point_gt`**（厳密な「より大きい」。省略時・初回作成時のフロント既定は `0`＝主体値または関連値が 0 より大きい）。エッジラベル用の `total_point` は従来どおり **`SUM(point)`**。
 - **`exclude_zero_reverse = true`（省略時・フロント既定）**: 無向ペアの両方向（辞書順 `pair_a → pair_b` と `pair_b → pair_a`）に `point <> 0` の行が揃うペアだけを対象とする（❷ の「主体値または関連値 0 は除外」と同等）。
-- 返却ペアは、**1 段目**で中心に触れてしきい値を満たしたペアから決まるネットワーク人物集合に属するものに限る。関連者同士のペアは、両者がその集合に入り、**2 段目**の集約で `SUM(point) > total_point_gt` を満たすときだけ含まれる。
+- 返却ペアは、**1 段目**で中心に触れてしきい値を満たしたペアから決まるネットワーク人物集合に属するものに限る。関連者同士のペアは、両者がその集合に入り、**2 段目**の集約で同じ `total_point_gt` / `exclude_zero_reverse` を満たすときだけ含まれる。
 
 **1) 中心人物サジェスト（任意・入力のたびにデバウンス実行）**
 
@@ -692,7 +692,7 @@ WHERE r.point <> 0
 GROUP BY
   CASE WHEN p1.title <= p2.title THEN p1.title ELSE p2.title END,
   CASE WHEN p1.title <= p2.title THEN p2.title ELSE p1.title END
-HAVING SUM(r.point) > :total_point_gt;
+HAVING MAX(r.point) > :total_point_gt;
 ```
 
 3a の各行の `pair_a` / `pair_b` と `:center_titles` の和集合を `:network_titles` とする。
@@ -713,7 +713,7 @@ WHERE r.point <> 0
 GROUP BY
   CASE WHEN p1.title <= p2.title THEN p1.title ELSE p2.title END,
   CASE WHEN p1.title <= p2.title THEN p2.title ELSE p1.title END
-HAVING SUM(r.point) > :total_point_gt
+HAVING MAX(r.point) > :total_point_gt
 ORDER BY total_point DESC;
 ```
 
@@ -722,14 +722,14 @@ ORDER BY total_point DESC;
 
 **4) しきい値 UI と再実行**
 
-- 初回の **「相関図を作成する」**: `total_point_gt = 1`（`DiagramTabPanel.tsx` の `DEFAULT_DIAGRAM_TOTAL_POINT_GT`）。
+- 初回の **「相関図を作成する」**: `total_point_gt = 0`（`DiagramTabPanel.tsx` の `DEFAULT_DIAGRAM_TOTAL_POINT_GT`）。
 - 図表示後の **「関連者を増やす」**: `total_point_gt` を **1 減らして** 同 API を再呼び出し（`total_point_gt > 0` のときのみ有効）。
 - **「関連者を減らす」**: `total_point_gt` を **1 増やして** 再呼び出し（表示中のペアが 1 件以上あるときのみ有効）。
 - いずれも **3)** と同じ SQL。応答の `pairs` で `rows` を置き換え、`center_titles` はリクエストどおり（Pydantic 正規化済み）が `members` に反映される。
 
 **手元 DB でエッジ候補を確認する例**
 
-`:t1`, `:t2` を中心人物の `person.title` に置き換える。初回 UI と同じく `total_point_gt = 1` のときは `HAVING SUM(r.point) > 1`。
+`:t1`, `:t2` を中心人物の `person.title` に置き換える。初回 UI と同じく `total_point_gt = 0` のときは `HAVING MAX(r.point) > 0`。
 
 ```sql
 SELECT
@@ -742,7 +742,7 @@ JOIN person AS p2 ON p2.id = r.slave_person_id
 WHERE r.point <> 0
   AND (p1.title IN (:t1, :t2) OR p2.title IN (:t1, :t2))
 GROUP BY 1, 2
-HAVING SUM(r.point) > 1
+HAVING MAX(r.point) > 0
 ORDER BY total_point DESC;
 ```
 

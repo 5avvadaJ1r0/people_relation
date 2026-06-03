@@ -78,7 +78,7 @@ def render_diagram_share_card_html(db: Session, share_id: str) -> str:
     titles = "、".join(p.title for p in resolved.center_persons)
     title = f"相関図: {titles}" if titles else "相関図"
     description = (
-        f"関連値の合計が {resolved.total_point_gt} より大きい関係"
+        f"主体値または関連値が {resolved.total_point_gt} より大きい関係"
         f"{'（関連者間リンクあり）' if resolved.show_peer_links else ''}"
         f"{'（主体値・関連値0除外）' if resolved.exclude_zero_reverse else ''}"
     )

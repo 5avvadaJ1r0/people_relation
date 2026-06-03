@@ -10,7 +10,7 @@ def core_network(
     db: Session,
     center_titles: list[str],
     *,
-    total_point_gt: int = 1,
+    total_point_gt: int = 0,
     exclude_zero_reverse: bool = True,
 ) -> DiagramCoreNetworkOut:
     rows = crud.aggregate_core_network_edges(

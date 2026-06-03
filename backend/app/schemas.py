@@ -102,9 +102,9 @@ class CoreNetworkIn(BaseModel):
 
     center_titles: list[str] = Field(min_length=1, max_length=10)
     total_point_gt: int = Field(
-        default=1,
+        default=0,
         ge=0,
-        description="無向ペア集約後の HAVING 条件: SUM(relation.point) > total_point_gt",
+        description="無向ペア集約後の HAVING 条件: MAX(relation.point) > total_point_gt（主体値または関連値のいずれかがしきい値より大きい）",
     )
     exclude_zero_reverse: bool = Field(
         default=True,
@@ -143,9 +143,9 @@ class DiagramShareCreateIn(BaseModel):
     center_person_ids: list[int] = Field(min_length=1, max_length=10)
     show_peer_links: bool = False
     total_point_gt: int = Field(
-        default=1,
+        default=0,
         ge=0,
-        description="無向ペア集約後の HAVING 条件: SUM(relation.point) > total_point_gt",
+        description="無向ペア集約後の HAVING 条件: MAX(relation.point) > total_point_gt（主体値または関連値のいずれかがしきい値より大きい）",
     )
     exclude_zero_reverse: bool = Field(
         default=True,
