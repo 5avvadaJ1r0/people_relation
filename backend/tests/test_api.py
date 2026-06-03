@@ -278,10 +278,68 @@ def test_diagram_core_network_returns_pairs(client: TestClient) -> None:
 
     r4 = client.post(
         "/api/v1/diagram/core_network",
-        json={"center_titles": ["図甲タイトル", "図乙タイトル"], "total_point_gt": 4},
+        json={"center_titles": ["図甲タイトル", "図乙タイトル"], "total_point_gt": 2},
     )
     assert r4.status_code == 200
     assert len(r4.json()["pairs"]) == 1
+
+
+def test_diagram_core_network_includes_one_way_relation_at_default_threshold(
+    client: TestClient,
+) -> None:
+    """片方向のみ point=1 の関係は exclude_zero_reverse=False かつ MAX > 0 で含まれる。"""
+    center_title = "図片方向中心タイトル"
+    related_title = "図片方向関連タイトル"
+    r = client.post(
+        "/api/v1/relation",
+        json=[
+            {
+                "master": {
+                    "name": "図片方向中心",
+                    "url": "https://example.com/diagram-one-way-center",
+                    "title": center_title,
+                },
+                "slave": {
+                    "name": "図片方向関連",
+                    "url": "https://example.com/diagram-one-way-related",
+                    "title": related_title,
+                },
+                "point": 1,
+            },
+        ],
+        params={"executed_master_url": "https://example.com/diagram-one-way-center"},
+    )
+    assert r.status_code == 200
+
+    r_default = client.post(
+        "/api/v1/diagram/core_network",
+        json={"center_titles": [center_title]},
+    )
+    assert r_default.status_code == 200
+    assert r_default.json()["pairs"] == []
+
+    r2 = client.post(
+        "/api/v1/diagram/core_network",
+        json={
+            "center_titles": [center_title],
+            "exclude_zero_reverse": False,
+        },
+    )
+    assert r2.status_code == 200
+    pairs = r2.json()["pairs"]
+    assert len(pairs) == 1
+    assert pairs[0]["total_point"] == 1
+
+    r3 = client.post(
+        "/api/v1/diagram/core_network",
+        json={
+            "center_titles": [center_title],
+            "total_point_gt": 1,
+            "exclude_zero_reverse": False,
+        },
+    )
+    assert r3.status_code == 200
+    assert r3.json()["pairs"] == []
 
 
 def test_diagram_core_network_includes_related_to_related_edges(

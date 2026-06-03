@@ -32,8 +32,8 @@ import {
   type CorrelationDiagramViewHandle,
 } from "./CorrelationDiagramView";
 
-/** 「相関図を作成する」および中心人物クリア時の関連値しきい値（`SUM(point) > total_point_gt` の gt） */
-const DEFAULT_DIAGRAM_TOTAL_POINT_GT = 1;
+/** 「相関図を作成する」および中心人物クリア時のしきい値（`MAX(point) > total_point_gt` の gt。既定 0＝主体値または関連値が 0 より大きい） */
+const DEFAULT_DIAGRAM_TOTAL_POINT_GT = 0;
 
 const SUGGEST_DEBOUNCE_MS = 320;
 const MIN_SUGGEST_QUERY_LEN = 1;
@@ -442,7 +442,7 @@ export const DiagramTabPanel = ({
     [],
   );
 
-  /** `SUM(point) > total_point_gt` で無向ペアを絞り込む。gt を上げると関連者は減り、下げると増える。 */
+  /** `MAX(point) > total_point_gt` で無向ペアを絞り込む。gt を上げると関連者は減り、下げると増える。 */
   const loadDiagramWithGt = async (gt: number) => {
     if (!canBuild) return;
     setBusy(true);
@@ -1011,7 +1011,7 @@ export const DiagramTabPanel = ({
                     </div>
                   ) : null}
                   <div className="diagramThresholdLabel">
-                    関連値の合計が{" "}
+                    主体値または関連値が{" "}
                     <strong className="diagramThresholdN">{totalPointGt}</strong>{" "}
                     より大きい関係だけを表示しています。
                     {!canBuild ? (

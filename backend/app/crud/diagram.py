@@ -39,12 +39,13 @@ def _core_network_edges_aggregate_select(
     pair_a = case((p1.title <= p2.title, p1.title), else_=p2.title)
     pair_b = case((p1.title <= p2.title, p2.title), else_=p1.title)
     total = func.sum(Relation.point)
+    max_point = func.max(Relation.point)
     endpoint_filter = (
         (p1.title.in_(titles), p2.title.in_(titles))
         if both_endpoints_in
         else (or_(p1.title.in_(titles), p2.title.in_(titles)),)
     )
-    having: list = [total > total_point_gt]
+    having: list = [max_point > total_point_gt]
     if exclude_zero_reverse:
         dir_ab = func.sum(
             case((and_(p1.title == pair_a, p2.title == pair_b), 1), else_=0)
@@ -83,12 +84,12 @@ def aggregate_core_network_edges(
     db: Session,
     *,
     center_titles: list[str],
-    total_point_gt: int = 1,
+    total_point_gt: int = 0,
     exclude_zero_reverse: bool = True,
 ) -> list[tuple[str, str, int]]:
     """中心人物を含む相関図ネットワークの relation を無向ペア集約して返す。
 
-    1. 中心人物の少なくとも一方に触れるペアで `SUM(point) > total_point_gt` を満たすものから
+    1. 中心人物の少なくとも一方に触れるペアで `MAX(point) > total_point_gt` を満たすものから
        ネットワーク上の人物 title 集合を構築する。
     2. その集合に属する人物同士のペア（関連者間を含む）を同じしきい値で再集約して返す。
 
