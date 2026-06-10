@@ -11,5 +11,5 @@ httpx==0.28.1
 mwparserfromhell==0.7.2
 beautifulsoup4==4.14.3
 lxml==6.1.1
-cryptography==48.0.0
+cryptography==48.0.1
 
