@@ -31,6 +31,7 @@ import {
   CorrelationDiagramView,
   type CorrelationDiagramViewHandle,
 } from "./CorrelationDiagramView";
+import { PersonSuggestListbox } from "../components/PersonSuggestListbox";
 
 /** 「相関図を作成する」および中心人物クリア時のしきい値（`MAX(point) > total_point_gt` の gt。既定 0＝主体値または関連値が 0 より大きい） */
 const DEFAULT_DIAGRAM_TOTAL_POINT_GT = 0;
@@ -402,6 +403,15 @@ export const DiagramTabPanel = ({
     query.trim().length >= MIN_SUGGEST_QUERY_LEN &&
     (suggestDebouncing || suggestBusy || suggestFetched);
 
+  const activeSuggestOptionDomId =
+    highlightIdx >= 0 && selectableMatches[highlightIdx]
+      ? `diagram-suggest-opt-${selectableMatches[highlightIdx].id}`
+      : undefined;
+
+  const diagramSearchCardClassName = suggestPanelOpen
+    ? "card diagramSearchCard diagramSuggestPanelOpen"
+    : "card diagramSearchCard";
+
   const addCenter = (p: ApiPerson) => {
     if (center.some((c) => c.id === p.id)) return;
     if (center.length >= MAX_DIAGRAM_CENTER) return;
@@ -669,7 +679,7 @@ export const DiagramTabPanel = ({
 
         <div className="diagramTopRow">
           <div className="diagramTopCol">
-            <div className="card diagramSearchCard">
+            <div className={diagramSearchCardClassName}>
               <h2 className="diagramFlowSectionTitle diagramCardLeadTitle">
                 中心人物の追加
               </h2>
@@ -770,66 +780,65 @@ export const DiagramTabPanel = ({
                   )}
                 </div>
 
-                {suggestPanelOpen ? (
-                  <div
-                    id="diagram-suggest-listbox"
-                    className="diagramSuggestPanel"
-                    role="listbox"
-                  >
-                    {suggestDebouncing || suggestBusy ? (
-                      <div className="diagramSuggestStatus">検索中…</div>
-                    ) : selectableMatches.length > 0 ? (
-                      selectableMatches.map((p, idx) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          id={`diagram-suggest-opt-${p.id}`}
-                          role="option"
-                          aria-selected={highlightIdx === idx}
-                          className={
-                            highlightIdx === idx
-                              ? "diagramSuggestOption diagramSuggestOptionActive"
-                              : "diagramSuggestOption"
-                          }
-                          disabled={panelBusy}
-                          onMouseDown={(ev) => ev.preventDefault()}
-                          onMouseEnter={() => setHighlightIdx(idx)}
-                          onClick={() => addCenter(p)}
-                        >
-                          {p.title}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="diagramSuggestEmpty">
-                        {center.length >= MAX_DIAGRAM_CENTER
-                          ? `中心人物は最大 ${MAX_DIAGRAM_CENTER} 名までです。`
-                          : matches.length > 0
-                            ? "この検索結果はすべてすでに中心人物に追加されています。"
-                            : suggestFetched ? (
-                              <span className="diagramSuggestEmptyText">
-                                該当する人物がいません。別の文字列を試すか、
-                                {onOpenListTabWithPrincipalQuery ? (
-                                  <button
-                                    type="button"
-                                    className="diagramSuggestEmptyLink"
-                                    onMouseDown={(ev) => ev.preventDefault()}
-                                    onClick={() =>
-                                      onOpenListTabWithPrincipalQuery(query)
-                                    }
-                                    aria-label="関連者リストアップのタブへ移動し、入力中の氏名を主体者入力欄に反映"
-                                  >
-                                    関連者リストアップ
-                                  </button>
-                                ) : (
-                                  "関連者リストアップ"
-                                )}
-                                が済んでいるか確認してください。
-                              </span>
-                            ) : null}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
+                <PersonSuggestListbox
+                  id="diagram-suggest-listbox"
+                  open={suggestPanelOpen}
+                  highlightIdx={highlightIdx}
+                  activeOptionDomId={activeSuggestOptionDomId}
+                >
+                  {suggestDebouncing || suggestBusy ? (
+                    <div className="diagramSuggestStatus">検索中…</div>
+                  ) : selectableMatches.length > 0 ? (
+                    selectableMatches.map((p, idx) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        id={`diagram-suggest-opt-${p.id}`}
+                        role="option"
+                        aria-selected={highlightIdx === idx}
+                        className={
+                          highlightIdx === idx
+                            ? "diagramSuggestOption diagramSuggestOptionActive"
+                            : "diagramSuggestOption"
+                        }
+                        disabled={panelBusy}
+                        onMouseDown={(ev) => ev.preventDefault()}
+                        onMouseEnter={() => setHighlightIdx(idx)}
+                        onClick={() => addCenter(p)}
+                      >
+                        {p.title}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="diagramSuggestEmpty">
+                      {center.length >= MAX_DIAGRAM_CENTER
+                        ? `中心人物は最大 ${MAX_DIAGRAM_CENTER} 名までです。`
+                        : matches.length > 0
+                          ? "この検索結果はすべてすでに中心人物に追加されています。"
+                          : suggestFetched ? (
+                            <span className="diagramSuggestEmptyText">
+                              該当する人物がいません。別の文字列を試すか、
+                              {onOpenListTabWithPrincipalQuery ? (
+                                <button
+                                  type="button"
+                                  className="diagramSuggestEmptyLink"
+                                  onMouseDown={(ev) => ev.preventDefault()}
+                                  onClick={() =>
+                                    onOpenListTabWithPrincipalQuery(query)
+                                  }
+                                  aria-label="関連者リストアップのタブへ移動し、入力中の氏名を主体者入力欄に反映"
+                                >
+                                  関連者リストアップ
+                                </button>
+                              ) : (
+                                "関連者リストアップ"
+                              )}
+                              が済んでいるか確認してください。
+                            </span>
+                          ) : null}
+                    </div>
+                  )}
+                </PersonSuggestListbox>
               </div>
               {center.length >= MAX_DIAGRAM_CENTER ? (
                 <p className="subtitle" style={{ marginTop: 10 }}>

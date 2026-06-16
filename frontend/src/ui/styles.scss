@@ -602,8 +602,9 @@ a {
   position: relative;
 }
 
-/* サジェストが下の ❷ カードに隠れてホイール・タッチが届かないのを防ぐ */
-.principalSearchCard.principalSuggestPanelOpen {
+/* サジェストが下のカードに隠れてホイール・タッチが届かないのを防ぐ */
+.principalSearchCard.principalSuggestPanelOpen,
+.diagramSearchCard.diagramSuggestPanelOpen {
   position: relative;
   z-index: $z-index-principal-suggest-card-open;
 }

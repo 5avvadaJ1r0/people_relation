@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
 import type { ChangeEvent, KeyboardEvent } from "react";
 import type { PeopleRelationListSearchPanelModel } from "../peopleRelationAppModel";
+import { PersonSuggestListbox } from "./PersonSuggestListbox";
 
 type PrincipalSearchCardProps = {
   error: string | null;
@@ -25,17 +25,10 @@ export const PrincipalSearchCard = ({
     onSelectPerson,
   } = listSearch;
 
-  const suggestListboxRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!suggestPanelOpen || highlightIdx < 0) return;
-    const active = matches[highlightIdx];
-    if (!active) return;
-    const opt = suggestListboxRef.current?.querySelector<HTMLElement>(
-      `#principal-suggest-opt-${active.id}`,
-    );
-    opt?.scrollIntoView({ block: "nearest" });
-  }, [highlightIdx, matches, suggestPanelOpen]);
+  const activeOptionDomId =
+    highlightIdx >= 0 && matches[highlightIdx]
+      ? `principal-suggest-opt-${matches[highlightIdx].id}`
+      : undefined;
 
   const handleQueryChange = (e: ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
@@ -131,44 +124,41 @@ export const PrincipalSearchCard = ({
           )}
         </div>
 
-        {suggestPanelOpen ? (
-          <div
-            ref={suggestListboxRef}
-            id="principal-suggest-listbox"
-            className="diagramSuggestPanel"
-            role="listbox"
-            onWheel={(e) => e.stopPropagation()}
-          >
-            {matches.length > 0 ? (
-              matches.map((p, idx) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  id={`principal-suggest-opt-${p.id}`}
-                  role="option"
-                  aria-selected={highlightIdx === idx}
-                  className={
-                    highlightIdx === idx
-                      ? "diagramSuggestOption diagramSuggestOptionActive"
-                      : "diagramSuggestOption"
-                  }
-                  onMouseDown={(ev) => ev.preventDefault()}
-                  onMouseEnter={() => setHighlightIdx(idx)}
-                  onClick={() => selectPerson(idx)}
-                >
-                  {p.name}
-                  {p.title !== p.name ? (
-                    <span className="principalSuggestOptionSub">（{p.title}）</span>
-                  ) : null}
-                </button>
-              ))
-            ) : (
-              <div className="diagramSuggestEmpty">
-                {suggestFetched ? "該当する人物がいません。" : null}
-              </div>
-            )}
-          </div>
-        ) : null}
+        <PersonSuggestListbox
+          id="principal-suggest-listbox"
+          open={suggestPanelOpen}
+          highlightIdx={highlightIdx}
+          activeOptionDomId={activeOptionDomId}
+        >
+          {matches.length > 0 ? (
+            matches.map((p, idx) => (
+              <button
+                key={p.id}
+                type="button"
+                id={`principal-suggest-opt-${p.id}`}
+                role="option"
+                aria-selected={highlightIdx === idx}
+                className={
+                  highlightIdx === idx
+                    ? "diagramSuggestOption diagramSuggestOptionActive"
+                    : "diagramSuggestOption"
+                }
+                onMouseDown={(ev) => ev.preventDefault()}
+                onMouseEnter={() => setHighlightIdx(idx)}
+                onClick={() => selectPerson(idx)}
+              >
+                {p.name}
+                {p.title !== p.name ? (
+                  <span className="principalSuggestOptionSub">（{p.title}）</span>
+                ) : null}
+              </button>
+            ))
+          ) : (
+            <div className="diagramSuggestEmpty">
+              {suggestFetched ? "該当する人物がいません。" : null}
+            </div>
+          )}
+        </PersonSuggestListbox>
       </div>
 
       {error && (
