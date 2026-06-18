@@ -1,6 +1,6 @@
 -r requirements.txt
 pytest==9.1.0
 # Starlette 1.2+ TestClient（FastAPI 経由）が利用。未導入時は httpx 利用で DeprecationWarning になる
-httpx2==2.3.0
+httpx2==2.4.0
 ruff
 pyright
